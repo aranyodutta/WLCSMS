@@ -1,16 +1,19 @@
+// ============================
+// WLCSMS app.js (GitHub Pages + Firebase CDN)
+// ============================
+
+// --- Firebase config ---
 const firebaseConfig = {
   apiKey: "AIzaSyBAFSNhMWbMXUPR10b8ynjiKD8tVRK6tQ8",
   authDomain: "wlc-talent-show-sms.firebaseapp.com",
   projectId: "wlc-talent-show-sms",
   storageBucket: "wlc-talent-show-sms.firebasestorage.app",
   messagingSenderId: "941916915658",
-  appId: "1:941916915658:web:06e04e1ace6a640d237133"
+  appId: "1:941916915658:web:06e04e1ace6a640d237133",
 };
 
-import {
-  initializeApp
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-
+// --- Firebase imports (CDN, no npm) ---
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   getFirestore,
   doc,
@@ -21,152 +24,38 @@ import {
   query,
   orderBy,
   runTransaction,
-  updateDoc
+  updateDoc,
+  getDoc,
+  getDocs,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
+// --- Init ---
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// --- Constants ---
 const SHOW_ID = "main";
-
-const seedItems = [
-  {
-    order: 1,
-    title: "Opening Welcome",
-    type: "NARRATION",
-    performers: ["Student MCs"],
-    plannedSeconds: 180
-  },
-  {
-    order: 2,
-    title: "Sunrise Beats",
-    type: "ACT",
-    performers: ["Jazz Ensemble"],
-    plannedSeconds: 240
-  },
-  {
-    order: 3,
-    title: "Spotlight Solo",
-    type: "ACT",
-    performers: ["Maya R."],
-    plannedSeconds: 210
-  },
-  {
-    order: 4,
-    title: "Community Announcements",
-    type: "NARRATION",
-    performers: ["Student Council"],
-    plannedSeconds: 120
-  },
-  {
-    order: 5,
-    title: "Dance Crew Showcase",
-    type: "ACT",
-    performers: ["Momentum Crew"],
-    plannedSeconds: 300
-  },
-  {
-    order: 6,
-    title: "Intermission",
-    type: "INTERMISSION",
-    performers: [],
-    plannedSeconds: 600
-  },
-  {
-    order: 7,
-    title: "Acoustic Duet",
-    type: "ACT",
-    performers: ["Noah & Priya"],
-    plannedSeconds: 240
-  },
-  {
-    order: 8,
-    title: "Comedy Spotlight",
-    type: "ACT",
-    performers: ["Jordan L."],
-    plannedSeconds: 180
-  },
-  {
-    order: 9,
-    title: "Senior Tribute",
-    type: "NARRATION",
-    performers: ["Senior Class"],
-    plannedSeconds: 180
-  },
-  {
-    order: 10,
-    title: "Finale Medley",
-    type: "ACT",
-    performers: ["All Performers"],
-    plannedSeconds: 360
-  },
-  {
-    order: 11,
-    title: "Closing Thanks",
-    type: "NARRATION",
-    performers: ["Student MCs"],
-    plannedSeconds: 150
-  }
-];
-
 const showRef = doc(db, "shows", SHOW_ID);
 const itemsRef = collection(showRef, "items");
 
-function subscribeShow(callback) {
-  return onSnapshot(showRef, (snapshot) => {
-    callback(snapshot.exists() ? snapshot.data() : null);
-  });
-}
+// --- Seed data (replace later with real lineup) ---
+const seedItems = [
+  { order: 1, title: "Opening Welcome", type: "NARRATION", performers: ["Student MCs"], plannedSeconds: 180 },
+  { order: 2, title: "Sunrise Beats", type: "ACT", performers: ["Jazz Ensemble"], plannedSeconds: 240 },
+  { order: 3, title: "Spotlight Solo", type: "ACT", performers: ["Maya R."], plannedSeconds: 210 },
+  { order: 4, title: "Community Announcements", type: "NARRATION", performers: ["Student Council"], plannedSeconds: 120 },
+  { order: 5, title: "Dance Crew Showcase", type: "ACT", performers: ["Momentum Crew"], plannedSeconds: 300 },
+  { order: 6, title: "Intermission", type: "INTERMISSION", performers: [], plannedSeconds: 600 },
+  { order: 7, title: "Acoustic Duet", type: "ACT", performers: ["Noah & Priya"], plannedSeconds: 240 },
+  { order: 8, title: "Comedy Spotlight", type: "ACT", performers: ["Jordan L."], plannedSeconds: 180 },
+  { order: 9, title: "Senior Tribute", type: "NARRATION", performers: ["Senior Class"], plannedSeconds: 180 },
+  { order: 10, title: "Finale Medley", type: "ACT", performers: ["All Performers"], plannedSeconds: 360 },
+  { order: 11, title: "Closing Thanks", type: "NARRATION", performers: ["Student MCs"], plannedSeconds: 150 },
+];
 
-function subscribeItems(callback) {
-  const itemsQuery = query(itemsRef, orderBy("order", "asc"));
-  return onSnapshot(itemsQuery, (snapshot) => {
-    const items = snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data()
-    }));
-    callback(items);
-  });
-}
-
-function buildInitialItems() {
-  return seedItems.map((item, index) => {
-    const status = index === 0 ? "backstage" : index === 1 ? "blue" : "queued";
-    return {
-      ...item,
-      status,
-      actualStartAt: null,
-      actualEndAt: null,
-      notes: ""
-    };
-  });
-}
-
-async function initShow() {
-  const batch = writeBatch(db);
-  const now = new Date();
-  const initialItems = buildInitialItems();
-  const totalPlannedSeconds = initialItems.reduce((sum, item) => sum + (item.plannedSeconds || 0), 0);
-  const plannedEndBaselineAt = new Date(now.getTime() + totalPlannedSeconds * 1000);
-
-  batch.set(showRef, {
-    status: "stopped",
-    holdMessage: "",
-    currentItemId: "item-1",
-    plannedEndBaselineAt,
-    projectedEndAt: plannedEndBaselineAt,
-    offsetSeconds: 0,
-    updatedAt: serverTimestamp()
-  });
-
-  initialItems.forEach((item, index) => {
-    const itemId = `item-${index + 1}`;
-    batch.set(doc(itemsRef, itemId), item);
-  });
-
-  await batch.commit();
-}
-
+// ============================
+// Helpers (time + formatting)
+// ============================
 function normalizeTimestamp(value) {
   if (!value) return null;
   if (value.toDate) return value.toDate();
@@ -189,8 +78,7 @@ function formatDuration(totalSeconds) {
 
 function formatOffset(offsetSeconds) {
   if (offsetSeconds == null || Number.isNaN(offsetSeconds)) return "—";
-  const abs = Math.abs(offsetSeconds);
-  return formatDuration(abs);
+  return formatDuration(Math.abs(offsetSeconds));
 }
 
 function getStatusLabel(offsetSeconds) {
@@ -199,55 +87,165 @@ function getStatusLabel(offsetSeconds) {
   return offsetSeconds > 0 ? "BEHIND" : "AHEAD";
 }
 
-function computeRemainingSeconds(items) {
-  return items
-    .filter((item) => item.status !== "done")
-    .reduce((sum, item) => sum + (item.plannedSeconds || 0), 0);
+function getElapsedSeconds(actualStartAt) {
+  const start = normalizeTimestamp(actualStartAt);
+  if (!start) return null;
+  return Math.floor((Date.now() - start.getTime()) / 1000);
 }
 
+function computeRemainingSeconds(items) {
+  return items
+    .filter((i) => i.status !== "done")
+    .reduce((sum, i) => sum + (i.plannedSeconds || 0), 0);
+}
+
+// Compute projected start timers for backstage/blue based on planned durations.
+// This is "good enough" for a live show.
+function getProjectedStartTimes(items) {
+  const live = items.find((i) => i.status === "live");
+  const backstage = items.find((i) => i.status === "backstage");
+  const now = Date.now();
+
+  const liveStart = normalizeTimestamp(live?.actualStartAt);
+  const liveBase = liveStart ? liveStart.getTime() : now;
+  const livePlanned = live?.plannedSeconds || 0;
+
+  const backstageStartMs = live ? liveBase + livePlanned * 1000 : now;
+  const blueStartMs = backstageStartMs + (backstage?.plannedSeconds || 0) * 1000;
+
+  return {
+    backstageEtaSeconds: Math.max(0, Math.floor((backstageStartMs - now) / 1000)),
+    blueEtaSeconds: Math.max(0, Math.floor((blueStartMs - now) / 1000)),
+  };
+}
+
+function getPerformersText(item) {
+  if (!item || !Array.isArray(item.performers) || item.performers.length === 0) return "—";
+  return item.performers.join(", ");
+}
+
+function safeObject(obj) {
+  // Removes undefined fields so Firestore never errors.
+  const cleaned = {};
+  Object.keys(obj).forEach((k) => {
+    if (obj[k] !== undefined) cleaned[k] = obj[k];
+  });
+  return cleaned;
+}
+
+// ============================
+// Firestore subscriptions
+// ============================
+function subscribeShow(callback) {
+  return onSnapshot(showRef, (snap) => callback(snap.exists() ? snap.data() : null));
+}
+
+function subscribeItems(callback) {
+  const itemsQuery = query(itemsRef, orderBy("order", "asc"));
+  return onSnapshot(itemsQuery, (snapshot) => {
+    const items = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    callback(items);
+  });
+}
+
+// ============================
+// Init / Reset (seed)
+// ============================
+function buildInitialItems() {
+  return seedItems.map((item, index) => {
+    const status = index === 0 ? "backstage" : index === 1 ? "blue" : "queued";
+    return {
+      ...item,
+      status,
+      actualStartAt: null,
+      actualEndAt: null,
+      notes: "",
+    };
+  });
+}
+
+async function initShow() {
+  const batch = writeBatch(db);
+  const now = new Date();
+  const initialItems = buildInitialItems();
+
+  // Deterministic IDs: item-1, item-2, ...
+  const firstItemId = initialItems.length ? "item-1" : null;
+
+  const totalPlannedSeconds = initialItems.reduce((sum, i) => sum + (i.plannedSeconds || 0), 0);
+  const plannedEndBaselineAt = new Date(now.getTime() + totalPlannedSeconds * 1000);
+
+  // Show doc (NEVER undefined)
+  batch.set(
+    showRef,
+    safeObject({
+      status: "stopped",
+      holdMessage: "",
+      currentItemId: firstItemId, // null if none, never undefined
+      plannedEndBaselineAt,
+      projectedEndAt: plannedEndBaselineAt,
+      offsetSeconds: 0,
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Items
+  initialItems.forEach((item, index) => {
+    const itemId = `item-${index + 1}`;
+    batch.set(doc(itemsRef, itemId), safeObject(item));
+  });
+
+  await batch.commit();
+}
+
+// ============================
+// Timing updates
+// ============================
 async function updateProjectedTiming(transaction, showData, items) {
   const remainingSeconds = computeRemainingSeconds(items);
   const now = new Date();
   const projectedEndAt = new Date(now.getTime() + remainingSeconds * 1000);
+
   const baseline = normalizeTimestamp(showData.plannedEndBaselineAt) || projectedEndAt;
   const offsetSeconds = Math.round((projectedEndAt - baseline) / 1000);
 
-  transaction.update(showRef, {
-    projectedEndAt,
-    offsetSeconds,
-    updatedAt: serverTimestamp()
-  });
+  transaction.update(showRef, safeObject({ projectedEndAt, offsetSeconds, updatedAt: serverTimestamp() }));
 }
 
+// ============================
+// Operator actions
+// ============================
 async function startCurrentItem() {
   await runTransaction(db, async (transaction) => {
     const showSnap = await transaction.get(showRef);
     if (!showSnap.exists()) throw new Error("Show not initialized");
-    const showData = showSnap.data();
-    const itemsQuery = query(itemsRef, orderBy("order", "asc"));
-    const itemsSnap = await transaction.get(itemsQuery);
-    const items = itemsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-    const currentId = showData.currentItemId;
-    const liveItems = items.filter((item) => item.status === "live");
 
-    liveItems.forEach((item) => {
-      if (item.id !== currentId) {
-        transaction.update(doc(itemsRef, item.id), { status: "queued" });
-      }
+    const showData = showSnap.data();
+    const itemsQ = query(itemsRef, orderBy("order", "asc"));
+    const itemsSnap = await transaction.get(itemsQ);
+    const items = itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    const currentId = showData.currentItemId || items.find((i) => i.status === "backstage")?.id || null;
+    if (!currentId) return;
+
+    // Ensure only the current item is live
+    items.filter((i) => i.status === "live" && i.id !== currentId).forEach((i) => {
+      transaction.update(doc(itemsRef, i.id), { status: "queued" });
     });
 
-    const currentItem = items.find((item) => item.id === currentId);
+    const currentItem = items.find((i) => i.id === currentId);
     if (!currentItem) return;
 
-    transaction.update(doc(itemsRef, currentId), {
+    transaction.update(doc(itemsRef, currentId), safeObject({
       status: "live",
-      actualStartAt: currentItem.actualStartAt || new Date()
-    });
+      actualStartAt: currentItem.actualStartAt || new Date(),
+    }));
 
-    transaction.update(showRef, {
+    transaction.update(showRef, safeObject({
       status: "running",
-      updatedAt: serverTimestamp()
-    });
+      currentItemId: currentId, // keep consistent
+      updatedAt: serverTimestamp(),
+    }));
 
     await updateProjectedTiming(transaction, showData, items);
   });
@@ -257,52 +255,54 @@ async function endCurrentItem() {
   await runTransaction(db, async (transaction) => {
     const showSnap = await transaction.get(showRef);
     if (!showSnap.exists()) throw new Error("Show not initialized");
+
     const showData = showSnap.data();
-    const itemsQuery = query(itemsRef, orderBy("order", "asc"));
-    const itemsSnap = await transaction.get(itemsQuery);
-    const items = itemsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    const itemsQ = query(itemsRef, orderBy("order", "asc"));
+    const itemsSnap = await transaction.get(itemsQ);
+    const items = itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
     const currentId = showData.currentItemId;
-    const currentIndex = items.findIndex((item) => item.id === currentId);
-    const liveItem = items.find((item) => item.status === "live") || items[currentIndex];
+    const currentIndex = items.findIndex((i) => i.id === currentId);
+    const liveItem = items.find((i) => i.status === "live") || items[currentIndex];
 
     if (liveItem) {
-      transaction.update(doc(itemsRef, liveItem.id), {
+      transaction.update(doc(itemsRef, liveItem.id), safeObject({
         status: "done",
-        actualEndAt: new Date()
-      });
+        actualEndAt: new Date(),
+      }));
     }
 
+    // Reset non-done items to queued
     const remainingItems = items
-      .filter((item) => item.id !== liveItem?.id)
-      .map((item) => (item.status === "done" ? item : { ...item, status: "queued" }));
+      .filter((i) => i.id !== liveItem?.id)
+      .map((i) => (i.status === "done" ? i : { ...i, status: "queued" }));
 
-    const sortedRemaining = remainingItems.filter((item) => item.status !== "done");
-    const nextBackstage = sortedRemaining[0];
-    const nextBlue = sortedRemaining[1];
+    const notDone = remainingItems.filter((i) => i.status !== "done").sort((a, b) => (a.order || 0) - (b.order || 0));
+    const nextBackstage = notDone[0] || null;
+    const nextBlue = notDone[1] || null;
 
-    if (nextBackstage) {
-      transaction.update(doc(itemsRef, nextBackstage.id), { status: "backstage" });
-      transaction.update(showRef, { currentItemId: nextBackstage.id });
-    }
+    if (nextBackstage) transaction.update(doc(itemsRef, nextBackstage.id), { status: "backstage" });
+    if (nextBlue) transaction.update(doc(itemsRef, nextBlue.id), { status: "blue" });
 
-    if (nextBlue) {
-      transaction.update(doc(itemsRef, nextBlue.id), { status: "blue" });
-    }
+    const nextCurrentId = nextBackstage?.id || null;
+    const nextStatus = notDone.length ? "running" : "stopped";
 
-    const status = sortedRemaining.length ? "running" : "stopped";
-
-    transaction.update(showRef, {
-      status,
-      updatedAt: serverTimestamp()
+    // Only include currentItemId if non-null. Never undefined.
+    const showUpdate = safeObject({
+      status: nextStatus,
+      updatedAt: serverTimestamp(),
+      currentItemId: nextCurrentId,
     });
 
-    const updatedItems = items.map((item) => {
-      if (item.id === liveItem?.id) return { ...item, status: "done" };
-      if (item.id === nextBackstage?.id) return { ...item, status: "backstage" };
-      if (item.id === nextBlue?.id) return { ...item, status: "blue" };
-      if (item.status === "done") return item;
-      return { ...item, status: "queued" };
+    transaction.update(showRef, showUpdate);
+
+    // Update projected timing using an "expected state" list
+    const updatedItems = items.map((i) => {
+      if (i.id === liveItem?.id) return { ...i, status: "done" };
+      if (i.id === nextBackstage?.id) return { ...i, status: "backstage" };
+      if (i.id === nextBlue?.id) return { ...i, status: "blue" };
+      if (i.status === "done") return i;
+      return { ...i, status: "queued" };
     });
 
     await updateProjectedTiming(transaction, showData, updatedItems);
@@ -311,138 +311,137 @@ async function endCurrentItem() {
 
 async function toggleHold(currentStatus, message) {
   const nextStatus = currentStatus === "hold" ? "running" : "hold";
-  await updateDoc(showRef, {
-    status: nextStatus,
-    holdMessage: nextStatus === "hold" ? message || "HOLD" : "",
-    updatedAt: serverTimestamp()
-  });
+  await updateDoc(
+    showRef,
+    safeObject({
+      status: nextStatus,
+      holdMessage: nextStatus === "hold" ? (message || "HOLD") : "",
+      updatedAt: serverTimestamp(),
+    })
+  );
 }
 
 async function setCurrentItem(itemId) {
-  await updateDoc(showRef, {
-    currentItemId: itemId,
-    updatedAt: serverTimestamp()
-  });
+  if (!itemId) return; // prevent undefined/empty writes
+  await updateDoc(showRef, safeObject({ currentItemId: itemId, updatedAt: serverTimestamp() }));
 }
 
 async function updatePlannedSeconds(itemId, plannedSeconds) {
-  await updateDoc(doc(itemsRef, itemId), {
-    plannedSeconds
-  });
+  if (!itemId) return;
+  const seconds = Number(plannedSeconds);
+  if (Number.isNaN(seconds) || seconds < 0) return;
+  await updateDoc(doc(itemsRef, itemId), safeObject({ plannedSeconds: seconds }));
 }
 
+// ============================
+// Undo system (hardened)
+// ============================
 async function undoAction(action) {
   if (!action) return;
+
   if (action.type === "start") {
     await runTransaction(db, async (transaction) => {
-      transaction.update(doc(itemsRef, action.itemId), {
+      if (!action.itemId) return;
+      transaction.update(doc(itemsRef, action.itemId), safeObject({
         status: action.previousStatus || "backstage",
-        actualStartAt: action.previousStart || null
-      });
-      transaction.update(showRef, {
+        actualStartAt: action.previousStart ?? null,
+      }));
+      transaction.update(showRef, safeObject({
         status: action.showStatus || "stopped",
-        updatedAt: serverTimestamp()
-      });
+        updatedAt: serverTimestamp(),
+      }));
     });
+    return;
   }
+
   if (action.type === "end") {
     const batch = writeBatch(db);
+
+    // Restore items
     action.items.forEach((item) => {
-      batch.update(doc(itemsRef, item.id), {
+      batch.update(doc(itemsRef, item.id), safeObject({
         status: item.status,
-        actualStartAt: item.actualStartAt || null,
-        actualEndAt: item.actualEndAt || null
-      });
+        actualStartAt: item.actualStartAt ?? null,
+        actualEndAt: item.actualEndAt ?? null,
+      }));
     });
-    batch.update(showRef, {
-      currentItemId: action.show.currentItemId,
-      status: action.show.status || "stopped",
-      updatedAt: serverTimestamp()
+
+    // Restore show (DO NOT write undefined)
+    const showPatch = safeObject({
+      status: action.show?.status || "stopped",
+      updatedAt: serverTimestamp(),
     });
+
+    // Only set currentItemId if it exists
+    if (action.show && action.show.currentItemId != null) {
+      showPatch.currentItemId = action.show.currentItemId;
+    }
+
+    batch.update(showRef, showPatch);
     await batch.commit();
   }
 }
 
-function getItemByStatus(items, status) {
-  return items.find((item) => item.status === status) || null;
-}
-
+// ============================
+// UI: Open View
+// ============================
 function summarizeUpcoming(items, currentId) {
-  const doneItems = items.filter((item) => item.status === "done").slice(-2);
-  const currentItem = items.find((item) => item.id === currentId);
-  const backstage = items.find((item) => item.status === "backstage");
-  const blue = items.find((item) => item.status === "blue");
-  const queued = items.filter((item) => item.status === "queued").slice(0, 3);
+  const doneItems = items.filter((i) => i.status === "done").slice(-2);
+  const currentItem = items.find((i) => i.id === currentId);
+  const backstage = items.find((i) => i.status === "backstage");
+  const blue = items.find((i) => i.status === "blue");
+  const queued = items.filter((i) => i.status === "queued").slice(0, 3);
+
   return [...doneItems, currentItem, backstage, blue, ...queued].filter(Boolean);
-}
-
-function getElapsedSeconds(actualStartAt) {
-  const start = normalizeTimestamp(actualStartAt);
-  if (!start) return null;
-  return Math.floor((Date.now() - start.getTime()) / 1000);
-}
-
-function getProjectedStartTimes(items) {
-  const live = items.find((item) => item.status === "live");
-  const backstage = items.find((item) => item.status === "backstage");
-  const blue = items.find((item) => item.status === "blue");
-
-  const now = Date.now();
-  const liveStart = normalizeTimestamp(live?.actualStartAt);
-  const liveBase = liveStart ? liveStart.getTime() : now;
-  const livePlanned = live?.plannedSeconds || 0;
-  const backstageStart = live ? liveBase + livePlanned * 1000 : now;
-  const blueStart = backstageStart + (backstage?.plannedSeconds || 0) * 1000;
-
-  return {
-    backstageEtaSeconds: Math.max(0, Math.floor((backstageStart - now) / 1000)),
-    blueEtaSeconds: Math.max(0, Math.floor((blueStart - now) / 1000))
-  };
-}
-
-function getPerformersText(item) {
-  if (!item || !item.performers || !item.performers.length) return "—";
-  return item.performers.join(", ");
 }
 
 function initOpenView() {
   const scheduleStatusEl = document.getElementById("scheduleStatus");
+  if (!scheduleStatusEl) return; // not on open page
+
   const projectedEndEl = document.getElementById("projectedEnd");
   const currentTimeEl = document.getElementById("currentTime");
   const showStatusEl = document.getElementById("showStatus");
   const holdBarEl = document.getElementById("holdBar");
   const upcomingListEl = document.getElementById("upcomingList");
+
   const liveTitleEl = document.getElementById("liveTitle");
   const livePerformersEl = document.getElementById("livePerformers");
+
   const backstageTitleEl = document.getElementById("backstageTitle");
   const backstagePerformersEl = document.getElementById("backstagePerformers");
   const backstageTimerEl = document.getElementById("backstageTimer");
+
   const blueTitleEl = document.getElementById("blueTitle");
   const bluePerformersEl = document.getElementById("bluePerformers");
   const blueTimerEl = document.getElementById("blueTimer");
-
-  if (!scheduleStatusEl) return;
 
   let showData = null;
   let items = [];
 
   function updateClock() {
-    const now = new Date();
-    currentTimeEl.textContent = formatClock(now);
+    currentTimeEl.textContent = formatClock(new Date());
     if (!items.length) return;
+
     const { backstageEtaSeconds, blueEtaSeconds } = getProjectedStartTimes(items);
-    backstageTimerEl.textContent = `GO TO STAGE IN: ${formatDuration(backstageEtaSeconds)}`;
-    blueTimerEl.textContent = `GET READY IN: ${formatDuration(blueEtaSeconds)}`;
+    if (backstageTimerEl) backstageTimerEl.textContent = `GO TO STAGE IN: ${formatDuration(backstageEtaSeconds)}`;
+    if (blueTimerEl) blueTimerEl.textContent = `GET READY IN: ${formatDuration(blueEtaSeconds)}`;
   }
 
   subscribeShow((data) => {
     showData = data;
-    if (!data) return;
+    if (!data) {
+      scheduleStatusEl.textContent = "—";
+      projectedEndEl.textContent = "—";
+      showStatusEl.textContent = "—";
+      return;
+    }
     const offset = data.offsetSeconds;
-    const statusLabel = getStatusLabel(offset);
-    scheduleStatusEl.textContent = statusLabel === "ON TIME" ? "ON TIME" : `${statusLabel} ${formatOffset(offset)}`;
-    projectedEndEl.textContent = formatClock(data.projectedEndAt?.toDate?.() || data.projectedEndAt);
-    showStatusEl.textContent = data.status ? data.status.toUpperCase() : "—";
+    const label = getStatusLabel(offset);
+    scheduleStatusEl.textContent = label === "ON TIME" ? "ON TIME" : `${label} ${formatOffset(offset)}`;
+
+    projectedEndEl.textContent = formatClock(normalizeTimestamp(data.projectedEndAt));
+    showStatusEl.textContent = data.status ? String(data.status).toUpperCase() : "—";
 
     if (data.status === "hold") {
       holdBarEl.style.display = "block";
@@ -454,14 +453,17 @@ function initOpenView() {
 
   subscribeItems((list) => {
     items = list;
-    const liveItem = items.find((item) => item.status === "live") || items.find((item) => item.id === showData?.currentItemId);
-    const backstageItem = items.find((item) => item.status === "backstage");
-    const blueItem = items.find((item) => item.status === "blue");
+
+    const liveItem = items.find((i) => i.status === "live") || items.find((i) => i.id === showData?.currentItemId);
+    const backstageItem = items.find((i) => i.status === "backstage");
+    const blueItem = items.find((i) => i.status === "blue");
 
     liveTitleEl.textContent = liveItem?.title || "—";
     livePerformersEl.textContent = getPerformersText(liveItem);
+
     backstageTitleEl.textContent = backstageItem?.title || "—";
     backstagePerformersEl.textContent = getPerformersText(backstageItem);
+
     blueTitleEl.textContent = blueItem?.title || "—";
     bluePerformersEl.textContent = getPerformersText(blueItem);
 
@@ -474,7 +476,7 @@ function initOpenView() {
           <div>${item.title}</div>
           <div class="meta">${item.type || ""}</div>
         </div>
-        <div class="meta">${item.status.toUpperCase()}</div>
+        <div class="meta">${String(item.status || "").toUpperCase()}</div>
       `;
       upcomingListEl.appendChild(row);
     });
@@ -484,8 +486,13 @@ function initOpenView() {
   updateClock();
 }
 
+// ============================
+// UI: Operator View
+// ============================
 function initOperatorView() {
   const operatorTimeEl = document.getElementById("operatorTime");
+  if (!operatorTimeEl) return; // not on operator page
+
   const operatorProjectedEndEl = document.getElementById("operatorProjectedEnd");
   const operatorOffsetEl = document.getElementById("operatorOffset");
   const operatorShowStatusEl = document.getElementById("operatorShowStatus");
@@ -501,6 +508,7 @@ function initOperatorView() {
 
   const backstageTitleEl = document.getElementById("backstageTitle");
   const backstagePlannedEl = document.getElementById("backstagePlanned");
+
   const blueTitleEl = document.getElementById("blueTitle");
   const bluePlannedEl = document.getElementById("bluePlanned");
 
@@ -509,11 +517,10 @@ function initOperatorView() {
   const undoBtn = document.getElementById("undoBtn");
   const holdBtn = document.getElementById("holdBtn");
   const initBtn = document.getElementById("initBtn");
+
   const runTableBody = document.querySelector("#runTable tbody");
   const advancedToggle = document.getElementById("advancedToggle");
   const advancedHeader = document.getElementById("advancedHeader");
-
-  if (!operatorTimeEl) return;
 
   let showData = null;
   let items = [];
@@ -521,9 +528,11 @@ function initOperatorView() {
 
   function updateClock() {
     operatorTimeEl.textContent = formatClock(new Date());
-    const currentItem = items.find((item) => item.id === showData?.currentItemId);
+
+    const currentItem = items.find((i) => i.id === showData?.currentItemId);
     const elapsed = getElapsedSeconds(currentItem?.actualStartAt);
     currentElapsedEl.textContent = elapsed == null ? "—" : formatDuration(elapsed);
+
     const planned = currentItem?.plannedSeconds || 0;
     if (elapsed != null) {
       const diff = elapsed - planned;
@@ -535,24 +544,40 @@ function initOperatorView() {
   }
 
   function renderShow() {
-    if (!showData) return;
-    operatorProjectedEndEl.textContent = formatClock(showData.projectedEndAt?.toDate?.() || showData.projectedEndAt);
-    operatorOffsetEl.textContent = showData.offsetSeconds == null ? "—" : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`;
-    operatorShowStatusEl.textContent = showData.status?.toUpperCase() || "—";
-    operatorStatusEl.textContent = showData.status?.toUpperCase() || "—";
+    if (!showData) {
+      operatorProjectedEndEl.textContent = "—";
+      operatorOffsetEl.textContent = "—";
+      operatorShowStatusEl.textContent = "—";
+      operatorStatusEl.textContent = "—";
+      return;
+    }
 
-    const currentItem = items.find((item) => item.id === showData.currentItemId) || items.find((item) => item.status === "live");
-    const backstageItem = items.find((item) => item.status === "backstage");
-    const blueItem = items.find((item) => item.status === "blue");
+    operatorProjectedEndEl.textContent = formatClock(normalizeTimestamp(showData.projectedEndAt));
+    operatorOffsetEl.textContent =
+      showData.offsetSeconds == null
+        ? "—"
+        : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`;
+
+    operatorShowStatusEl.textContent = showData.status ? String(showData.status).toUpperCase() : "—";
+    operatorStatusEl.textContent = showData.status ? String(showData.status).toUpperCase() : "—";
+
+    const currentItem =
+      items.find((i) => i.id === showData.currentItemId) ||
+      items.find((i) => i.status === "live") ||
+      items.find((i) => i.status === "backstage");
+
+    const backstageItem = items.find((i) => i.status === "backstage");
+    const blueItem = items.find((i) => i.status === "blue");
 
     currentTitleEl.textContent = currentItem?.title || "—";
     currentTypeEl.textContent = currentItem?.type || "—";
-    currentStatusEl.textContent = currentItem?.status ? currentItem.status.toUpperCase() : "—";
+    currentStatusEl.textContent = currentItem?.status ? String(currentItem.status).toUpperCase() : "—";
     currentPlannedEl.textContent = currentItem?.plannedSeconds ? formatDuration(currentItem.plannedSeconds) : "—";
-    currentStartTimeEl.textContent = formatClock(currentItem?.actualStartAt?.toDate?.() || currentItem?.actualStartAt);
+    currentStartTimeEl.textContent = formatClock(normalizeTimestamp(currentItem?.actualStartAt));
 
     backstageTitleEl.textContent = backstageItem?.title || "—";
     backstagePlannedEl.textContent = backstageItem?.plannedSeconds ? formatDuration(backstageItem.plannedSeconds) : "—";
+
     blueTitleEl.textContent = blueItem?.title || "—";
     bluePlannedEl.textContent = blueItem?.plannedSeconds ? formatDuration(blueItem.plannedSeconds) : "—";
   }
@@ -562,13 +587,13 @@ function initOperatorView() {
     items.forEach((item) => {
       const row = document.createElement("tr");
       row.innerHTML = `
-        <td>${item.order}</td>
-        <td>${item.title}</td>
-        <td>${item.type}</td>
+        <td>${item.order ?? ""}</td>
+        <td>${item.title ?? ""}</td>
+        <td>${item.type ?? ""}</td>
         <td><span class="tag ${item.status}">${item.status}</span></td>
         <td>${item.plannedSeconds ? formatDuration(item.plannedSeconds) : "—"}</td>
-        <td>${formatClock(item.actualStartAt?.toDate?.() || item.actualStartAt)}</td>
-        <td>${formatClock(item.actualEndAt?.toDate?.() || item.actualEndAt)}</td>
+        <td>${formatClock(normalizeTimestamp(item.actualStartAt))}</td>
+        <td>${formatClock(normalizeTimestamp(item.actualEndAt))}</td>
         <td class="advanced" style="display:none;">
           <div class="flex">
             <button data-action="set" data-id="${item.id}" class="secondary">Set as current</button>
@@ -580,6 +605,7 @@ function initOperatorView() {
     });
   }
 
+  // Subscriptions
   subscribeShow((data) => {
     showData = data;
     renderShow();
@@ -592,72 +618,76 @@ function initOperatorView() {
     renderRunTable();
   });
 
-  startBtn.addEventListener("click", async () => {
-    const currentItem = items.find((item) => item.id === showData?.currentItemId);
+  // Buttons
+  startBtn?.addEventListener("click", async () => {
+    const currentItem = items.find((i) => i.id === showData?.currentItemId) || items.find((i) => i.status === "backstage");
     lastAction = {
       type: "start",
-      itemId: currentItem?.id,
-      previousStatus: currentItem?.status,
-      previousStart: currentItem?.actualStartAt || null,
-      showStatus: showData?.status
+      itemId: currentItem?.id || null,
+      previousStatus: currentItem?.status || "backstage",
+      previousStart: currentItem?.actualStartAt ?? null,
+      showStatus: showData?.status || "stopped",
     };
     await startCurrentItem();
   });
 
-  endBtn.addEventListener("click", async () => {
-    const snapshot = items.map((item) => ({
-      id: item.id,
-      status: item.status,
-      actualStartAt: item.actualStartAt || null,
-      actualEndAt: item.actualEndAt || null
+  endBtn?.addEventListener("click", async () => {
+    const snapshot = items.map((i) => ({
+      id: i.id,
+      status: i.status,
+      actualStartAt: i.actualStartAt ?? null,
+      actualEndAt: i.actualEndAt ?? null,
     }));
     lastAction = {
       type: "end",
       show: {
-        currentItemId: showData?.currentItemId,
-        status: showData?.status
+        currentItemId: showData?.currentItemId ?? null,
+        status: showData?.status || "stopped",
       },
-      items: snapshot
+      items: snapshot,
     };
     await endCurrentItem();
   });
 
-  undoBtn.addEventListener("click", async () => {
+  undoBtn?.addEventListener("click", async () => {
     if (!lastAction) return;
     await undoAction(lastAction);
     lastAction = null;
   });
 
-  holdBtn.addEventListener("click", async () => {
+  holdBtn?.addEventListener("click", async () => {
     const message = prompt("Hold message", showData?.holdMessage || "HOLD");
     await toggleHold(showData?.status, message);
   });
 
-  initBtn.addEventListener("click", async () => {
+  initBtn?.addEventListener("click", async () => {
     if (!confirm("Reset the show? This will overwrite all data.")) return;
     await initShow();
   });
 
-  advancedToggle.addEventListener("change", () => {
+  // Advanced controls toggle
+  advancedToggle?.addEventListener("change", () => {
     const isEnabled = advancedToggle.checked;
-    document.querySelectorAll(".advanced").forEach((cell) => {
-      cell.style.display = isEnabled ? "table-cell" : "none";
-    });
-    advancedHeader.style.display = isEnabled ? "table-cell" : "none";
+    document.querySelectorAll(".advanced").forEach((cell) => (cell.style.display = isEnabled ? "table-cell" : "none"));
+    if (advancedHeader) advancedHeader.style.display = isEnabled ? "table-cell" : "none";
   });
 
-  runTableBody.addEventListener("click", async (event) => {
+  // Advanced table actions (set current / edit planned)
+  runTableBody?.addEventListener("click", async (event) => {
     const button = event.target.closest("button");
     if (!button) return;
+
     const action = button.dataset.action;
     const itemId = button.dataset.id;
+
     if (action === "set") {
       await setCurrentItem(itemId);
     }
+
     if (action === "edit") {
       const value = prompt("Enter planned seconds", "180");
       const seconds = Number(value);
-      if (!Number.isNaN(seconds)) {
+      if (!Number.isNaN(seconds) && seconds >= 0) {
         await updatePlannedSeconds(itemId, seconds);
       }
     }
@@ -667,6 +697,9 @@ function initOperatorView() {
   updateClock();
 }
 
+// ============================
+// Boot
+// ============================
 document.addEventListener("DOMContentLoaded", () => {
   initOpenView();
   initOperatorView();

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SMS Operator View</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="operator">
+  <header>
+    <h1>SMS — OPERATOR</h1>
+    <span class="status-chip" id="operatorStatus">Loading…</span>
+  </header>
+  <main>
+    <section class="top-stats">
+      <div class="stat-card">
+        <h3>Current Time</h3>
+        <div class="value" id="operatorTime">—</div>
+      </div>
+      <div class="stat-card">
+        <h3>Projected End</h3>
+        <div class="value" id="operatorProjectedEnd">—</div>
+      </div>
+      <div class="stat-card">
+        <h3>Offset</h3>
+        <div class="value" id="operatorOffset">—</div>
+      </div>
+      <div class="stat-card">
+        <h3>Show Status</h3>
+        <div class="value" id="operatorShowStatus">—</div>
+      </div>
+    </section>
+
+    <section class="grid-two">
+      <div class="panel">
+        <h2>Now Running</h2>
+        <div class="list">
+          <div class="list-item">
+            <div>
+              <div id="currentTitle">—</div>
+              <div class="meta" id="currentType">—</div>
+            </div>
+            <div class="meta" id="currentStatus">—</div>
+          </div>
+          <div class="list-item">
+            <span>Planned</span>
+            <span id="currentPlanned">—</span>
+          </div>
+          <div class="list-item">
+            <span>Elapsed</span>
+            <span id="currentElapsed">—</span>
+          </div>
+          <div class="list-item">
+            <span>Over / Under</span>
+            <span id="currentOverUnder">—</span>
+          </div>
+          <div class="list-item">
+            <span>Start Time</span>
+            <span id="currentStartTime">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Next Up</h2>
+        <div class="list">
+          <div class="list-item">
+            <div>
+              <div id="backstageTitle">—</div>
+              <div class="meta">Backstage</div>
+            </div>
+            <div class="meta" id="backstagePlanned">—</div>
+          </div>
+          <div class="list-item">
+            <div>
+              <div id="blueTitle">—</div>
+              <div class="meta">Blue Zone</div>
+            </div>
+            <div class="meta" id="bluePlanned">—</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top: 24px;">
+      <h2>Controls</h2>
+      <div class="controls">
+        <button id="startBtn">Start Item</button>
+        <button id="endBtn" class="danger">End Item</button>
+        <button id="undoBtn" class="secondary">Undo Last Action</button>
+        <button id="holdBtn" class="warn">Toggle Hold</button>
+        <button id="initBtn" class="danger">Init Show / Reset</button>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top: 24px;">
+      <div class="flex" style="justify-content: space-between;">
+        <h2>Run of Show</h2>
+        <label class="toggle">
+          <input type="checkbox" id="advancedToggle" />
+          Advanced Controls
+        </label>
+      </div>
+      <div style="max-height: 360px; overflow: auto;">
+        <table class="table" id="runTable">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Title</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Planned</th>
+              <th>Start</th>
+              <th>End</th>
+              <th id="advancedHeader" style="display:none;">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

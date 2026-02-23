@@ -1,4 +1,8 @@
 // ==============================
+// WLCSMS app.js — FULL FILE
+// ==============================
+
+// ==============================
 // Firebase config
 // ==============================
 const firebaseConfig = {
@@ -22,14 +26,13 @@ import {
   orderBy,
   runTransaction,
   updateDoc,
-  getDoc,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 // ==============================
-// Show seed data (edit this later)
+// Show seed data (edit later)
 // ==============================
 const SHOW_ID = "main";
 
@@ -53,7 +56,7 @@ const showRef = doc(db, "shows", SHOW_ID);
 const itemsRef = collection(showRef, "items");
 
 function itemIdForIndex(i) {
-  return `item-${i + 1}`; // i is 0-based
+  return `item-${i + 1}`;
 }
 function itemRefByIndex(i) {
   return doc(itemsRef, itemIdForIndex(i));
@@ -137,6 +140,10 @@ function computeProjectedTiming(showData, items) {
 // Init / seed show
 // ==============================
 function buildInitialItems() {
+  // BEFORE START:
+  // item-1 = backstage
+  // item-2 = blue
+  // rest = queued
   return seedItems.map((item, index) => {
     const status = index === 0 ? "backstage" : index === 1 ? "blue" : "queued";
     return {
@@ -153,6 +160,7 @@ async function initShow() {
   const batch = writeBatch(db);
   const now = new Date();
   const initialItems = buildInitialItems();
+
   const totalPlannedSeconds = initialItems.reduce((sum, item) => sum + (item.plannedSeconds || 0), 0);
   const plannedEndBaselineAt = new Date(now.getTime() + totalPlannedSeconds * 1000);
 
@@ -181,13 +189,39 @@ async function txGetAllItems(transaction) {
   for (let i = 0; i < ITEM_COUNT; i++) {
     const ref = itemRefByIndex(i);
     const snap = await transaction.get(ref);
-    if (snap.exists()) {
-      items.push({ id: snap.id, ...snap.data() });
-    }
+    if (snap.exists()) items.push({ id: snap.id, ...snap.data() });
   }
-  // Sort just in case
   items.sort((a, b) => (a.order || 0) - (b.order || 0));
   return items;
+}
+
+// ==============================
+// Queue shifting helper
+// ==============================
+function computeShiftedStatuses(items, liveId) {
+  // liveId must exist in items
+  const idx = items.findIndex((it) => it.id === liveId);
+  if (idx < 0) return null;
+
+  // Next two items in order (ignoring DONE items in between)
+  const notDoneAfter = items.filter((it, i) => i > idx && it.status !== "done");
+  const nextBackstage = notDoneAfter[0] || null;
+  const nextBlue = notDoneAfter[1] || null;
+
+  const statusMap = new Map();
+  items.forEach((it) => {
+    if (it.status === "done") {
+      statusMap.set(it.id, "done");
+      return;
+    }
+    statusMap.set(it.id, "queued");
+  });
+
+  statusMap.set(liveId, "live");
+  if (nextBackstage) statusMap.set(nextBackstage.id, "backstage");
+  if (nextBlue) statusMap.set(nextBlue.id, "blue");
+
+  return { statusMap, nextBackstage, nextBlue };
 }
 
 // ==============================
@@ -197,26 +231,41 @@ async function startCurrentItem() {
   await runTransaction(db, async (transaction) => {
     const showSnap = await transaction.get(showRef);
     if (!showSnap.exists()) throw new Error("Show not initialized. Click Init Show / Reset first.");
-
     const showData = showSnap.data();
+
     const items = await txGetAllItems(transaction);
 
     const currentId = showData.currentItemId;
     const currentItem = items.find((it) => it.id === currentId);
     if (!currentItem) throw new Error(`Current item not found: ${currentId}`);
 
-    // Set any other live item back to queued (safety)
+    const shift = computeShiftedStatuses(items, currentId);
+    if (!shift) throw new Error("Could not compute queue shift.");
+
+    // Apply new statuses
     items.forEach((it) => {
-      if (it.status === "live" && it.id !== currentId) {
-        transaction.update(doc(itemsRef, it.id), { status: "queued" });
+      const targetStatus = shift.statusMap.get(it.id) || it.status;
+
+      const patch = {};
+      let needsUpdate = false;
+
+      if (it.status !== targetStatus) {
+        patch.status = targetStatus;
+        needsUpdate = true;
+      }
+
+      // Ensure LIVE item has a start time
+      if (it.id === currentId && !it.actualStartAt) {
+        patch.actualStartAt = new Date();
+        needsUpdate = true;
+      }
+
+      if (needsUpdate) {
+        transaction.update(doc(itemsRef, it.id), patch);
       }
     });
 
-    transaction.update(doc(itemsRef, currentId), {
-      status: "live",
-      actualStartAt: currentItem.actualStartAt || new Date(),
-    });
-
+    // Projected timing
     const { projectedEndAt, offsetSeconds } = computeProjectedTiming(showData, items);
 
     transaction.update(showRef, {
@@ -236,51 +285,55 @@ async function endCurrentItem() {
 
     const items = await txGetAllItems(transaction);
 
-    // Prefer an actually live item, otherwise fall back to currentItemId
+    // End the live item (or fall back to currentId)
     const liveItem = items.find((it) => it.status === "live") || items.find((it) => it.id === showData.currentItemId);
-    if (!liveItem) throw new Error("No current/live item found to end.");
+    if (!liveItem) throw new Error("No LIVE/current item found to end.");
 
-    // Mark ended item done
+    // Mark it done
     transaction.update(doc(itemsRef, liveItem.id), {
       status: "done",
       actualEndAt: new Date(),
     });
 
-    // Rebuild statuses for remaining items:
+    // Determine next current: first NOT DONE item in order after this one
     const remaining = items
       .filter((it) => it.id !== liveItem.id)
       .map((it) => (it.status === "done" ? it : { ...it, status: "queued" }))
       .sort((a, b) => (a.order || 0) - (b.order || 0));
 
     const notDone = remaining.filter((it) => it.status !== "done");
-    const nextBackstage = notDone[0] || null;
+    const nextCurrent = notDone[0] || null;
     const nextBlue = notDone[1] || null;
 
-    if (nextBackstage) transaction.update(doc(itemsRef, nextBackstage.id), { status: "backstage" });
-    if (nextBlue) transaction.update(doc(itemsRef, nextBlue.id), { status: "blue" });
+    // Apply statuses: nextCurrent = backstage, nextBlue = blue, rest queued
+    notDone.forEach((it, idx) => {
+      const targetStatus = idx === 0 ? "backstage" : idx === 1 ? "blue" : "queued";
+      transaction.update(doc(itemsRef, it.id), { status: targetStatus });
+    });
 
-    // Update show current pointer
-    const nextCurrentId = nextBackstage ? nextBackstage.id : null;
+    const nextShowStatus = nextCurrent ? (showData.status === "hold" ? "hold" : "running") : "stopped";
 
-    // If nothing left, stop show
-    const nextShowStatus = nextCurrentId ? (showData.status === "hold" ? "hold" : "running") : "stopped";
+    // Update show pointer
+    transaction.update(showRef, {
+      status: nextShowStatus,
+      currentItemId: nextCurrent ? nextCurrent.id : "item-1",
+      updatedAt: serverTimestamp(),
+    });
 
+    // Timing calc uses updated logical state
     const updatedItemsForTiming = [
-      // ended item (done)
       { ...liveItem, status: "done" },
-      // remaining items with updated statuses
       ...remaining.map((it) => {
-        if (it.id === nextBackstage?.id) return { ...it, status: "backstage" };
+        if (it.id === nextCurrent?.id) return { ...it, status: "backstage" };
         if (it.id === nextBlue?.id) return { ...it, status: "blue" };
-        return it;
+        if (it.status === "done") return it;
+        return { ...it, status: "queued" };
       }),
     ];
 
     const { projectedEndAt, offsetSeconds } = computeProjectedTiming(showData, updatedItemsForTiming);
 
     transaction.update(showRef, {
-      status: nextShowStatus,
-      currentItemId: nextCurrentId || "",
       projectedEndAt,
       offsetSeconds,
       updatedAt: serverTimestamp(),
@@ -308,41 +361,31 @@ async function updatePlannedSeconds(itemId, plannedSeconds) {
   await updateDoc(doc(itemsRef, itemId), { plannedSeconds });
 }
 
-// Undo just restores snapshots captured in the operator click handlers
+// ==============================
+// Undo: snapshot-based (works for START and END)
+// ==============================
 async function undoAction(action) {
   if (!action) return;
 
-  if (action.type === "start") {
-    await runTransaction(db, async (transaction) => {
-      const itemRef = doc(itemsRef, action.itemId);
-      transaction.update(itemRef, {
-        status: action.previousStatus || "backstage",
-        actualStartAt: action.previousStart || null,
-      });
-      transaction.update(showRef, {
-        status: action.showStatus || "stopped",
-        updatedAt: serverTimestamp(),
-      });
-    });
-    return;
-  }
+  const batch = writeBatch(db);
 
-  if (action.type === "end") {
-    const batch = writeBatch(db);
-    action.items.forEach((item) => {
-      batch.update(doc(itemsRef, item.id), {
-        status: item.status,
-        actualStartAt: item.actualStartAt || null,
-        actualEndAt: item.actualEndAt || null,
-      });
+  // Restore items
+  action.items.forEach((item) => {
+    batch.update(doc(itemsRef, item.id), {
+      status: item.status,
+      actualStartAt: item.actualStartAt || null,
+      actualEndAt: item.actualEndAt || null,
     });
-    batch.update(showRef, {
-      currentItemId: action.show.currentItemId || "item-1",
-      status: action.show.status || "stopped",
-      updatedAt: serverTimestamp(),
-    });
-    await batch.commit();
-  }
+  });
+
+  // Restore show
+  batch.update(showRef, {
+    currentItemId: action.show.currentItemId || "item-1",
+    status: action.show.status || "stopped",
+    updatedAt: serverTimestamp(),
+  });
+
+  await batch.commit();
 }
 
 // ==============================
@@ -392,7 +435,7 @@ function getProjectedStartTimes(items) {
 // ------------------------------
 function initOpenView() {
   const scheduleStatusEl = document.getElementById("scheduleStatus");
-  if (!scheduleStatusEl) return; // not on open.html
+  if (!scheduleStatusEl) return;
 
   const projectedEndEl = document.getElementById("projectedEnd");
   const currentTimeEl = document.getElementById("currentTime");
@@ -415,10 +458,8 @@ function initOpenView() {
   let items = [];
 
   function updateClock() {
-    const now = new Date();
-    currentTimeEl.textContent = formatClock(now);
+    currentTimeEl.textContent = formatClock(new Date());
     if (!items.length) return;
-
     const { backstageEtaSeconds, blueEtaSeconds } = getProjectedStartTimes(items);
     backstageTimerEl.textContent = `GO TO STAGE IN: ${formatDuration(backstageEtaSeconds)}`;
     blueTimerEl.textContent = `GET READY IN: ${formatDuration(blueEtaSeconds)}`;
@@ -445,9 +486,8 @@ function initOpenView() {
   subscribeItems((list) => {
     items = list;
 
-    const liveItem =
-      items.find((item) => item.status === "live") ||
-      items.find((item) => item.id === showData?.currentItemId);
+    // ON STAGE = only show LIVE (don’t fake it)
+    const liveItem = items.find((item) => item.status === "live") || null;
 
     const backstageItem = items.find((item) => item.status === "backstage");
     const blueItem = items.find((item) => item.status === "blue");
@@ -485,7 +525,7 @@ function initOpenView() {
 // ------------------------------
 function initOperatorView() {
   const operatorTimeEl = document.getElementById("operatorTime");
-  if (!operatorTimeEl) return; // not on operator.html
+  if (!operatorTimeEl) return;
 
   const operatorProjectedEndEl = document.getElementById("operatorProjectedEnd");
   const operatorOffsetEl = document.getElementById("operatorOffset");
@@ -599,7 +639,6 @@ function initOperatorView() {
     renderRunTable();
   });
 
-  // Wrap click handlers so errors are visible
   async function safeRun(fn) {
     try {
       await fn();
@@ -609,36 +648,31 @@ function initOperatorView() {
     }
   }
 
+  function snapshotState() {
+    return {
+      show: {
+        currentItemId: showData?.currentItemId,
+        status: showData?.status,
+      },
+      items: items.map((item) => ({
+        id: item.id,
+        status: item.status,
+        actualStartAt: item.actualStartAt || null,
+        actualEndAt: item.actualEndAt || null,
+      })),
+    };
+  }
+
   startBtn?.addEventListener("click", () =>
     safeRun(async () => {
-      const currentItem = items.find((item) => item.id === showData?.currentItemId);
-      lastAction = {
-        type: "start",
-        itemId: currentItem?.id,
-        previousStatus: currentItem?.status,
-        previousStart: currentItem?.actualStartAt || null,
-        showStatus: showData?.status,
-      };
+      lastAction = { type: "snapshot", ...snapshotState() };
       await startCurrentItem();
     })
   );
 
   endBtn?.addEventListener("click", () =>
     safeRun(async () => {
-      const snapshot = items.map((item) => ({
-        id: item.id,
-        status: item.status,
-        actualStartAt: item.actualStartAt || null,
-        actualEndAt: item.actualEndAt || null,
-      }));
-      lastAction = {
-        type: "end",
-        show: {
-          currentItemId: showData?.currentItemId,
-          status: showData?.status,
-        },
-        items: snapshot,
-      };
+      lastAction = { type: "snapshot", ...snapshotState() };
       await endCurrentItem();
     })
   );

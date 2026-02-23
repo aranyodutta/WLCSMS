@@ -123,6 +123,95 @@ function displayStatus(status) {
   return s ? s.toUpperCase() : "—";
 }
 
+const DEFAULT_STAGE_NEEDS = Object.freeze({
+  mics: "—",
+  chairs: "—",
+  instruments: "—",
+  other: "—",
+});
+
+const DEMO_STAGE_NEEDS_BY_TITLE = {
+  "Opening Welcome": { mics: "1 handheld", chairs: "0", instruments: "None", other: "Podium optional" },
+  "Sunrise Beats": { mics: "2 handheld, 1 stand", chairs: "2", instruments: "Piano", other: "Piano bench" },
+  "Spotlight Solo": { mics: "1 handheld", chairs: "1", instruments: "None", other: "Music stand (optional)" },
+  "Community Announcements": { mics: "2 handheld", chairs: "0", instruments: "None", other: "Clipboards" },
+  "Dance Crew Showcase": { mics: "0", chairs: "0", instruments: "None", other: "Center stage clear" },
+  "Intermission": { mics: "0", chairs: "0", instruments: "None", other: "Reset stage" },
+  "Acoustic Duet": { mics: "2 handheld, 1 stand", chairs: "2", instruments: "Guitar", other: "DI box / cable" },
+  "Comedy Spotlight": { mics: "1 handheld", chairs: "1", instruments: "None", other: "Stool" },
+  "Choir Harmony": { mics: "4 stand", chairs: "0", instruments: "Keyboard", other: "Risers (if available)" },
+  "Senior Speech": { mics: "1 handheld", chairs: "0", instruments: "None", other: "Podium" },
+  "Finale": { mics: "4 handheld", chairs: "0", instruments: "None", other: "All performers on deck" },
+};
+
+function getStageNeeds(item) {
+  const source = item?.stageNeeds || DEMO_STAGE_NEEDS_BY_TITLE[item?.title] || DEFAULT_STAGE_NEEDS;
+  return {
+    mics: source?.mics || "—",
+    chairs: source?.chairs || "—",
+    instruments: source?.instruments || "—",
+    other: source?.other || "—",
+  };
+}
+
+function getOffsetToneClass(offsetSeconds) {
+  if (offsetSeconds == null || Number.isNaN(offsetSeconds)) return "is-on-time";
+  if (Math.abs(offsetSeconds) <= 10) return "is-on-time";
+  return offsetSeconds > 0 ? "is-behind" : "is-ahead";
+}
+
+function applyOffsetTone(el, offsetSeconds) {
+  if (!el) return;
+  el.classList.remove("is-ahead", "is-behind", "is-on-time");
+  el.classList.add(getOffsetToneClass(offsetSeconds));
+}
+
+function getShowStatusClass(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "running") return "status-running";
+  if (s === "hold") return "status-hold";
+  return "status-idle";
+}
+
+function applyShowStatusTone(el, status) {
+  if (!el) return;
+  el.classList.remove("status-running", "status-hold", "status-idle");
+  el.classList.add(getShowStatusClass(status));
+}
+
+function escapeHtml(value) {
+  return String(value ?? "—")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function requirementsCardHtml(label, item) {
+  const needs = getStageNeeds(item);
+  const title = item?.title || "—";
+  const type = item?.type ? displayType(item.type) : "—";
+  return `
+    <div class="materials-slot-head">
+      <div class="materials-slot-label">${escapeHtml(label)}</div>
+      <div class="materials-slot-title">${escapeHtml(title)}</div>
+      <div class="materials-slot-type">${escapeHtml(type)}</div>
+    </div>
+    <div class="materials-kv">
+      <div class="materials-kv-row"><span>Mics</span><strong>${escapeHtml(needs.mics)}</strong></div>
+      <div class="materials-kv-row"><span>Chairs</span><strong>${escapeHtml(needs.chairs)}</strong></div>
+      <div class="materials-kv-row"><span>Instruments</span><strong>${escapeHtml(needs.instruments)}</strong></div>
+      <div class="materials-kv-row"><span>Other</span><strong>${escapeHtml(needs.other)}</strong></div>
+    </div>
+  `;
+}
+
+function renderRequirementsCard(container, label, item) {
+  if (!container) return;
+  container.innerHTML = requirementsCardHtml(label, item);
+}
+
 function computeRemainingSeconds(items) {
   return items
     .filter((item) => item.status !== "done")
@@ -477,10 +566,12 @@ function initOpenView() {
     const offset = data.offsetSeconds;
     const label = getStatusLabel(offset);
     scheduleStatusEl.textContent = label === "ON TIME" ? "ON TIME" : `${label} ${formatOffset(offset)}`;
+    applyOffsetTone(scheduleStatusEl, offset);
 
     projectedEndEl.textContent = formatClock(data.projectedEndAt?.toDate?.() || data.projectedEndAt);
 
     showStatusEl.textContent = data.status ? data.status.toUpperCase() : "—";
+    applyShowStatusTone(showStatusEl, data.status);
 
     if (data.status === "hold") {
       holdBarEl.style.display = "block";
@@ -563,6 +654,9 @@ function initOperatorView() {
   const runTableBody = document.querySelector("#runTable tbody");
   const advancedToggle = document.getElementById("advancedToggle");
   const advancedHeader = document.getElementById("advancedHeader");
+  const reqCurrentEl = document.getElementById("reqCurrent");
+  const reqBackstageEl = document.getElementById("reqBackstage");
+  const reqOnDeckEl = document.getElementById("reqOnDeck");
 
   let showData = null;
   let items = [];
@@ -617,10 +711,15 @@ function initOperatorView() {
 
     operatorOffsetEl.textContent =
       showData.offsetSeconds == null ? "—" : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`;
+    applyOffsetTone(operatorOffsetEl, showData.offsetSeconds);
 
     const statusText = showData.status?.toUpperCase() || "—";
     operatorShowStatusEl.textContent = statusText;
-    if (operatorHeaderStatusEl) operatorHeaderStatusEl.textContent = statusText;
+    applyShowStatusTone(operatorShowStatusEl, showData.status);
+    if (operatorHeaderStatusEl) {
+      operatorHeaderStatusEl.textContent = statusText;
+      applyShowStatusTone(operatorHeaderStatusEl, showData.status);
+    }
 
     const currentItem =
       items.find((item) => item.status === "live") ||
@@ -640,6 +739,10 @@ function initOperatorView() {
 
     deckTitleEl.textContent = deckItem?.title || "—";
     deckPlannedEl.textContent = deckItem?.plannedSeconds ? formatDuration(deckItem.plannedSeconds) : "—";
+
+    renderRequirementsCard(reqCurrentEl, "On Stage (Now)", currentItem);
+    renderRequirementsCard(reqBackstageEl, "Backstage (Next)", backstageItem);
+    renderRequirementsCard(reqOnDeckEl, "On Deck", deckItem);
   }
 
   function updateClock() {

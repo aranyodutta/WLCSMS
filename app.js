@@ -1,5 +1,5 @@
 // ==============================
-// WLCSMS app.js — FULL FILE
+// WLCSMS app.js — FULL FILE (buttons + visuals)
 // ==============================
 
 // ==============================
@@ -83,7 +83,7 @@ function subscribeItems(callback) {
 }
 
 // ==============================
-// Time helpers
+// Time + format helpers
 // ==============================
 function normalizeTimestamp(value) {
   if (!value) return null;
@@ -115,8 +115,26 @@ function getStatusLabel(offsetSeconds) {
   if (Math.abs(offsetSeconds) <= 10) return "ON TIME";
   return offsetSeconds > 0 ? "BEHIND" : "AHEAD";
 }
+
+function computeRemainingSeconds(items) {
+  return items
+    .filter((item) => item.status !== "done")
+    .reduce((sum, item) => sum + (item.plannedSeconds || 0), 0);
+}
+
+function computeProjectedTiming(showData, items) {
+  const remainingSeconds = computeRemainingSeconds(items);
+  const now = new Date();
+  const projectedEndAt = new Date(now.getTime() + remainingSeconds * 1000);
+
+  const baseline = normalizeTimestamp(showData.plannedEndBaselineAt) || projectedEndAt;
+  const offsetSeconds = Math.round((projectedEndAt - baseline) / 1000);
+
+  return { projectedEndAt, offsetSeconds };
+}
+
 // ==============================
-// UI signal styling helpers
+// UI signal styling helpers (uses your CSS variables)
 // ==============================
 function setSignalText(el, tone = "neutral") {
   if (!el) return;
@@ -149,7 +167,6 @@ function applyOffsetVisual(el, offsetSeconds) {
 
 function applyShowStatusVisual(el, status) {
   const s = String(status || "").toLowerCase();
-
   if (s === "running") return setSignalText(el, "success");
   if (s === "hold") return setSignalText(el, "warn");
   if (s === "stopped") return setSignalText(el, "muted");
@@ -158,38 +175,12 @@ function applyShowStatusVisual(el, status) {
 
 function applyItemStatusVisual(el, status) {
   const s = String(status || "").toLowerCase();
-
   if (s === "live") return setSignalText(el, "success");
   if (s === "backstage") return setSignalText(el, "info");
   if (s === "blue") return setSignalText(el, "warn");
   if (s === "done") return setSignalText(el, "info");
   if (s === "queued") return setSignalText(el, "muted");
   return setSignalText(el, "neutral");
-}
-
-function clearSignalText(el) {
-  if (!el) return;
-  el.style.color = "";
-  el.style.fontWeight = "";
-}
-// ==============================
-// Projected timing
-// ==============================
-function computeRemainingSeconds(items) {
-  return items
-    .filter((item) => item.status !== "done")
-    .reduce((sum, item) => sum + (item.plannedSeconds || 0), 0);
-}
-
-function computeProjectedTiming(showData, items) {
-  const remainingSeconds = computeRemainingSeconds(items);
-  const now = new Date();
-  const projectedEndAt = new Date(now.getTime() + remainingSeconds * 1000);
-
-  const baseline = normalizeTimestamp(showData.plannedEndBaselineAt) || projectedEndAt;
-  const offsetSeconds = Math.round((projectedEndAt - baseline) / 1000);
-
-  return { projectedEndAt, offsetSeconds };
 }
 
 // ==============================
@@ -255,22 +246,17 @@ async function txGetAllItems(transaction) {
 // Queue shifting helper
 // ==============================
 function computeShiftedStatuses(items, liveId) {
-  // liveId must exist in items
   const idx = items.findIndex((it) => it.id === liveId);
   if (idx < 0) return null;
 
-  // Next two items in order (ignoring DONE items in between)
   const notDoneAfter = items.filter((it, i) => i > idx && it.status !== "done");
   const nextBackstage = notDoneAfter[0] || null;
   const nextBlue = notDoneAfter[1] || null;
 
   const statusMap = new Map();
   items.forEach((it) => {
-    if (it.status === "done") {
-      statusMap.set(it.id, "done");
-      return;
-    }
-    statusMap.set(it.id, "queued");
+    if (it.status === "done") statusMap.set(it.id, "done");
+    else statusMap.set(it.id, "queued");
   });
 
   statusMap.set(liveId, "live");
@@ -298,7 +284,6 @@ async function startCurrentItem() {
     const shift = computeShiftedStatuses(items, currentId);
     if (!shift) throw new Error("Could not compute queue shift.");
 
-    // Apply new statuses
     items.forEach((it) => {
       const targetStatus = shift.statusMap.get(it.id) || it.status;
 
@@ -310,18 +295,14 @@ async function startCurrentItem() {
         needsUpdate = true;
       }
 
-      // Ensure LIVE item has a start time
       if (it.id === currentId && !it.actualStartAt) {
         patch.actualStartAt = new Date();
         needsUpdate = true;
       }
 
-      if (needsUpdate) {
-        transaction.update(doc(itemsRef, it.id), patch);
-      }
+      if (needsUpdate) transaction.update(doc(itemsRef, it.id), patch);
     });
 
-    // Projected timing
     const { projectedEndAt, offsetSeconds } = computeProjectedTiming(showData, items);
 
     transaction.update(showRef, {
@@ -341,17 +322,14 @@ async function endCurrentItem() {
 
     const items = await txGetAllItems(transaction);
 
-    // End the live item (or fall back to currentId)
     const liveItem = items.find((it) => it.status === "live") || items.find((it) => it.id === showData.currentItemId);
     if (!liveItem) throw new Error("No LIVE/current item found to end.");
 
-    // Mark it done
     transaction.update(doc(itemsRef, liveItem.id), {
       status: "done",
       actualEndAt: new Date(),
     });
 
-    // Determine next current: first NOT DONE item in order after this one
     const remaining = items
       .filter((it) => it.id !== liveItem.id)
       .map((it) => (it.status === "done" ? it : { ...it, status: "queued" }))
@@ -361,7 +339,6 @@ async function endCurrentItem() {
     const nextCurrent = notDone[0] || null;
     const nextBlue = notDone[1] || null;
 
-    // Apply statuses: nextCurrent = backstage, nextBlue = blue, rest queued
     notDone.forEach((it, idx) => {
       const targetStatus = idx === 0 ? "backstage" : idx === 1 ? "blue" : "queued";
       transaction.update(doc(itemsRef, it.id), { status: targetStatus });
@@ -369,14 +346,12 @@ async function endCurrentItem() {
 
     const nextShowStatus = nextCurrent ? (showData.status === "hold" ? "hold" : "running") : "stopped";
 
-    // Update show pointer
     transaction.update(showRef, {
       status: nextShowStatus,
       currentItemId: nextCurrent ? nextCurrent.id : "item-1",
       updatedAt: serverTimestamp(),
     });
 
-    // Timing calc uses updated logical state
     const updatedItemsForTiming = [
       { ...liveItem, status: "done" },
       ...remaining.map((it) => {
@@ -418,14 +393,13 @@ async function updatePlannedSeconds(itemId, plannedSeconds) {
 }
 
 // ==============================
-// Undo: snapshot-based (works for START and END)
+// Undo: snapshot-based
 // ==============================
 async function undoAction(action) {
   if (!action) return;
 
   const batch = writeBatch(db);
 
-  // Restore items
   action.items.forEach((item) => {
     batch.update(doc(itemsRef, item.id), {
       status: item.status,
@@ -434,7 +408,6 @@ async function undoAction(action) {
     });
   });
 
-  // Restore show
   batch.update(showRef, {
     currentItemId: action.show.currentItemId || "item-1",
     status: action.show.status || "stopped",
@@ -470,7 +443,6 @@ function getElapsedSeconds(actualStartAt) {
 function getProjectedStartTimes(items) {
   const live = items.find((item) => item.status === "live");
   const backstage = items.find((item) => item.status === "backstage");
-  const blue = items.find((item) => item.status === "blue");
 
   const now = Date.now();
   const liveStart = normalizeTimestamp(live?.actualStartAt);
@@ -523,17 +495,21 @@ function initOpenView() {
 
   subscribeShow((data) => {
     showData = data;
-    if (!data) return;
+    if (!data) {
+      showStatusEl.textContent = "NOT READY";
+      setSignalText(showStatusEl, "muted");
+      return;
+    }
 
-const offset = data.offsetSeconds;
-const label = getStatusLabel(offset);
-scheduleStatusEl.textContent = label === "ON TIME" ? "ON TIME" : `${label} ${formatOffset(offset)}`;
-applyScheduleStatusVisual(scheduleStatusEl, offset);
+    const offset = data.offsetSeconds;
+    const label = getStatusLabel(offset);
+    scheduleStatusEl.textContent = label === "ON TIME" ? "ON TIME" : `${label} ${formatOffset(offset)}`;
+    applyScheduleStatusVisual(scheduleStatusEl, offset);
 
-projectedEndEl.textContent = formatClock(data.projectedEndAt?.toDate?.() || data.projectedEndAt);
+    projectedEndEl.textContent = formatClock(data.projectedEndAt?.toDate?.() || data.projectedEndAt);
 
-showStatusEl.textContent = data.status ? data.status.toUpperCase() : "—";
-applyShowStatusVisual(showStatusEl, data.status);
+    showStatusEl.textContent = data.status ? data.status.toUpperCase() : "—";
+    applyShowStatusVisual(showStatusEl, data.status);
 
     if (data.status === "hold") {
       holdBarEl.style.display = "block";
@@ -546,9 +522,7 @@ applyShowStatusVisual(showStatusEl, data.status);
   subscribeItems((list) => {
     items = list;
 
-    // ON STAGE = only show LIVE (don’t fake it)
     const liveItem = items.find((item) => item.status === "live") || null;
-
     const backstageItem = items.find((item) => item.status === "backstage");
     const blueItem = items.find((item) => item.status === "blue");
 
@@ -590,6 +564,7 @@ function initOperatorView() {
   const operatorProjectedEndEl = document.getElementById("operatorProjectedEnd");
   const operatorOffsetEl = document.getElementById("operatorOffset");
   const operatorShowStatusEl = document.getElementById("operatorShowStatus");
+  const operatorStatusEl = document.getElementById("operatorStatus"); // if present in your HTML
 
   const currentTitleEl = document.getElementById("currentTitle");
   const currentTypeEl = document.getElementById("currentType");
@@ -619,17 +594,33 @@ function initOperatorView() {
   let lastAction = null;
 
   function renderShow() {
-    if (!showData) return;
+    if (!showData) {
+      operatorProjectedEndEl.textContent = "—";
+      operatorOffsetEl.textContent = "—";
+      operatorShowStatusEl.textContent = "NOT READY";
+      setSignalText(operatorShowStatusEl, "muted");
+      if (operatorStatusEl) {
+        operatorStatusEl.textContent = "NOT READY";
+        setSignalText(operatorStatusEl, "muted");
+      }
+      return;
+    }
 
     operatorProjectedEndEl.textContent = formatClock(showData.projectedEndAt?.toDate?.() || showData.projectedEndAt);
-operatorOffsetEl.textContent =
-  showData.offsetSeconds == null
-    ? "—"
-    : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`;
-applyOffsetVisual(operatorOffsetEl, showData.offsetSeconds);
 
-operatorShowStatusEl.textContent = showData.status?.toUpperCase() || "—";
-applyShowStatusVisual(operatorShowStatusEl, showData.status);
+    operatorOffsetEl.textContent =
+      showData.offsetSeconds == null
+        ? "—"
+        : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`;
+    applyOffsetVisual(operatorOffsetEl, showData.offsetSeconds);
+
+    operatorShowStatusEl.textContent = showData.status?.toUpperCase() || "—";
+    applyShowStatusVisual(operatorShowStatusEl, showData.status);
+
+    if (operatorStatusEl) {
+      operatorStatusEl.textContent = showData.status?.toUpperCase() || "—";
+      applyShowStatusVisual(operatorStatusEl, showData.status);
+    }
 
     const currentItem =
       items.find((item) => item.id === showData.currentItemId) ||
@@ -640,8 +631,10 @@ applyShowStatusVisual(operatorShowStatusEl, showData.status);
 
     currentTitleEl.textContent = currentItem?.title || "—";
     currentTypeEl.textContent = currentItem?.type || "—";
+
     currentStatusEl.textContent = currentItem?.status ? currentItem.status.toUpperCase() : "—";
-applyItemStatusVisual(currentStatusEl, currentItem?.status);
+    applyItemStatusVisual(currentStatusEl, currentItem?.status);
+
     currentPlannedEl.textContent = currentItem?.plannedSeconds ? formatDuration(currentItem.plannedSeconds) : "—";
     currentStartTimeEl.textContent = formatClock(currentItem?.actualStartAt?.toDate?.() || currentItem?.actualStartAt);
 
@@ -677,29 +670,25 @@ applyItemStatusVisual(currentStatusEl, currentItem?.status);
 
   function updateClock() {
     operatorTimeEl.textContent = formatClock(new Date());
+
     const currentItem = items.find((item) => item.id === showData?.currentItemId);
     const elapsed = getElapsedSeconds(currentItem?.actualStartAt);
     currentElapsedEl.textContent = elapsed == null ? "—" : formatDuration(elapsed);
 
-const planned = currentItem?.plannedSeconds || 0;
-if (elapsed != null) {
-  const diff = elapsed - planned;
-  const sign = diff > 0 ? "+" : diff < 0 ? "-" : "";
-  currentOverUnderEl.textContent = `${sign}${formatDuration(Math.abs(diff))}`;
+    const planned = currentItem?.plannedSeconds || 0;
+    if (elapsed != null) {
+      const diff = elapsed - planned;
+      const sign = diff > 0 ? "+" : diff < 0 ? "-" : "";
+      currentOverUnderEl.textContent = `${sign}${formatDuration(Math.abs(diff))}`;
 
-  // + means over planned time (behind) -> red
-  // - means under planned time (ahead) -> green
-  if (Math.abs(diff) <= 10) {
-    setSignalText(currentOverUnderEl, "info");
-  } else if (diff > 0) {
-    setSignalText(currentOverUnderEl, "danger");
-  } else {
-    setSignalText(currentOverUnderEl, "success");
+      if (Math.abs(diff) <= 10) setSignalText(currentOverUnderEl, "info");
+      else if (diff > 0) setSignalText(currentOverUnderEl, "danger");
+      else setSignalText(currentOverUnderEl, "success");
+    } else {
+      currentOverUnderEl.textContent = "—";
+      setSignalText(currentOverUnderEl, "muted");
+    }
   }
-} else {
-  currentOverUnderEl.textContent = "—";
-  setSignalText(currentOverUnderEl, "muted");
-}
 
   subscribeShow((data) => {
     showData = data;
@@ -738,14 +727,14 @@ if (elapsed != null) {
 
   startBtn?.addEventListener("click", () =>
     safeRun(async () => {
-      lastAction = { type: "snapshot", ...snapshotState() };
+      lastAction = snapshotState();
       await startCurrentItem();
     })
   );
 
   endBtn?.addEventListener("click", () =>
     safeRun(async () => {
-      lastAction = { type: "snapshot", ...snapshotState() };
+      lastAction = snapshotState();
       await endCurrentItem();
     })
   );
@@ -787,9 +776,7 @@ if (elapsed != null) {
     const itemId = button.dataset.id;
 
     safeRun(async () => {
-      if (action === "set") {
-        await setCurrentItem(itemId);
-      }
+      if (action === "set") await setCurrentItem(itemId);
       if (action === "edit") {
         const value = prompt("Enter planned seconds", "180");
         const seconds = Number(value);

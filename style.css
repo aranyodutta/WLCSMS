@@ -1,729 +1,811 @@
-// ==============================
-// Firebase config
-// ==============================
-const firebaseConfig = {
-  apiKey: "AIzaSyBAFSNhMWbMXUPR10b8ynjiKD8tVRK6tQ8",
-  authDomain: "wlc-talent-show-sms.firebaseapp.com",
-  projectId: "wlc-talent-show-sms",
-  storageBucket: "wlc-talent-show-sms.firebasestorage.app",
-  messagingSenderId: "941916915658",
-  appId: "1:941916915658:web:06e04e1ace6a640d237133",
-};
+:root {
+  color-scheme: dark;
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import {
-  getFirestore,
-  doc,
-  collection,
-  serverTimestamp,
-  writeBatch,
-  onSnapshot,
-  query,
-  orderBy,
-  runTransaction,
-  updateDoc,
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+  /* Core palette (Open View / Display) */
+  --bg: #0a0f1a;
+  --bg-alt: #0f1727;
+  --panel: #121c2d;
+  --panel-alt: #18253a;
+  --panel-soft: #0f1a2b;
+  --border: rgba(255, 255, 255, 0.08);
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+  --text: #eef4ff;
+  --muted: #aab6cc;
+  --muted-2: #7f8da7;
 
-// ==============================
-// Show seed data (edit this later)
-// ==============================
-const SHOW_ID = "main";
+  --accent: #4cc2ff;
+  --accent-2: #6f8cff;
+  --success: #35d78a;
+  --warn: #ffb14c;
+  --danger: #ff5d5d;
+  --info: #69c7ff;
 
-const seedItems = [
-  { order: 1, title: "Opening Welcome", type: "NARRATION", performers: ["Student MCs"], plannedSeconds: 180 },
-  { order: 2, title: "Sunrise Beats", type: "ACT", performers: ["Jazz Ensemble"], plannedSeconds: 240 },
-  { order: 3, title: "Spotlight Solo", type: "ACT", performers: ["Maya R."], plannedSeconds: 210 },
-  { order: 4, title: "Community Announcements", type: "NARRATION", performers: ["Student Council"], plannedSeconds: 120 },
-  { order: 5, title: "Dance Crew Showcase", type: "ACT", performers: ["Momentum Crew"], plannedSeconds: 300 },
-  { order: 6, title: "Intermission", type: "INTERMISSION", performers: [], plannedSeconds: 600 },
-  { order: 7, title: "Acoustic Duet", type: "ACT", performers: ["Noah & Priya"], plannedSeconds: 240 },
-  { order: 8, title: "Comedy Spotlight", type: "ACT", performers: ["Jordan L."], plannedSeconds: 180 },
-  { order: 9, title: "Senior Tribute", type: "NARRATION", performers: ["Senior Class"], plannedSeconds: 180 },
-  { order: 10, title: "Finale Medley", type: "ACT", performers: ["All Performers"], plannedSeconds: 360 },
-  { order: 11, title: "Closing Thanks", type: "NARRATION", performers: ["Student MCs"], plannedSeconds: 150 },
-];
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  --shadow-soft: 0 8px 22px rgba(0, 0, 0, 0.22);
 
-const ITEM_COUNT = seedItems.length;
+  --radius: 16px;
+  --radius-sm: 12px;
+  --radius-lg: 20px;
 
-const showRef = doc(db, "shows", SHOW_ID);
-const itemsRef = collection(showRef, "items");
-
-function itemIdForIndex(i) {
-  return `item-${i + 1}`; // i is 0-based
-}
-function itemRefByIndex(i) {
-  return doc(itemsRef, itemIdForIndex(i));
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-// ==============================
-// Subscriptions
-// ==============================
-function subscribeShow(callback) {
-  return onSnapshot(showRef, (snapshot) => {
-    callback(snapshot.exists() ? snapshot.data() : null);
-  });
+* {
+  box-sizing: border-box;
 }
 
-function subscribeItems(callback) {
-  const itemsQuery = query(itemsRef, orderBy("order", "asc"));
-  return onSnapshot(itemsQuery, (snapshot) => {
-    const items = snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data(),
-    }));
-    callback(items);
-  });
+html,
+body {
+  min-height: 100%;
 }
 
-// ==============================
-// Time helpers
-// ==============================
-function normalizeTimestamp(value) {
-  if (!value) return null;
-  if (value.toDate) return value.toDate();
-  if (value instanceof Date) return value;
-  return null;
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 700px at 10% -10%, rgba(76, 194, 255, 0.14), transparent 55%),
+    radial-gradient(900px 600px at 100% 0%, rgba(111, 140, 255, 0.1), transparent 60%),
+    linear-gradient(180deg, #090d16 0%, #0a0f1a 45%, #0b1019 100%);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.35;
 }
 
-function formatClock(date) {
-  if (!date) return "—";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
-function formatDuration(totalSeconds) {
-  if (totalSeconds == null || Number.isNaN(totalSeconds)) return "—";
-  const clamped = Math.max(0, Math.floor(totalSeconds));
-  const minutes = Math.floor(clamped / 60);
-  const seconds = clamped % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+/* ==============================
+   Header
+============================== */
+header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(10, 15, 26, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
-function formatOffset(offsetSeconds) {
-  if (offsetSeconds == null || Number.isNaN(offsetSeconds)) return "—";
-  return formatDuration(Math.abs(offsetSeconds));
+header h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text);
 }
 
-function getStatusLabel(offsetSeconds) {
-  if (offsetSeconds == null || Number.isNaN(offsetSeconds)) return "ON TIME";
-  if (Math.abs(offsetSeconds) <= 10) return "ON TIME";
-  return offsetSeconds > 0 ? "BEHIND" : "AHEAD";
+header .status-chip {
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, rgba(76, 194, 255, 0.16), rgba(76, 194, 255, 0.08));
+  border: 1px solid rgba(76, 194, 255, 0.28);
+  color: #b6e8ff;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
 }
 
-function safeSetText(el, value) {
-  if (!el) return;
-  el.textContent = value ?? "—";
+main {
+  padding: 24px;
+  max-width: 1500px;
+  margin: 0 auto;
 }
 
-// ==============================
-// Projected timing
-// ==============================
-function computeRemainingSeconds(items) {
-  return items
-    .filter((item) => item.status !== "done")
-    .reduce((sum, item) => sum + (item.plannedSeconds || 0), 0);
+/* ==============================
+   Layout Blocks
+============================== */
+.top-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 22px;
 }
 
-function computeProjectedTiming(showData, items) {
-  const remainingSeconds = computeRemainingSeconds(items);
-  const now = new Date();
-  const projectedEndAt = new Date(now.getTime() + remainingSeconds * 1000);
-
-  const baseline = normalizeTimestamp(showData.plannedEndBaselineAt) || projectedEndAt;
-  const offsetSeconds = Math.round((projectedEndAt - baseline) / 1000);
-
-  return { projectedEndAt, offsetSeconds };
+.grid-two {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 22px;
 }
 
-// ==============================
-// Init / seed show
-// ==============================
-function buildInitialItems() {
-  return seedItems.map((item, index) => {
-    const status = index === 0 ? "backstage" : index === 1 ? "blue" : "queued";
-    return {
-      ...item,
-      status,
-      actualStartAt: null,
-      actualEndAt: null,
-      notes: "",
-    };
-  });
+/* ==============================
+   Cards / Panels
+============================== */
+.stat-card,
+.panel {
+  background: linear-gradient(180deg, rgba(18, 28, 45, 0.92), rgba(16, 24, 38, 0.95));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
-async function initShow() {
-  const batch = writeBatch(db);
-  const now = new Date();
-  const initialItems = buildInitialItems();
-  const totalPlannedSeconds = initialItems.reduce((sum, item) => sum + (item.plannedSeconds || 0), 0);
-  const plannedEndBaselineAt = new Date(now.getTime() + totalPlannedSeconds * 1000);
-
-  batch.set(showRef, {
-    status: "stopped",
-    holdMessage: "",
-    currentItemId: "item-1",
-    plannedEndBaselineAt,
-    projectedEndAt: plannedEndBaselineAt,
-    offsetSeconds: 0,
-    updatedAt: serverTimestamp(),
-  });
-
-  initialItems.forEach((item, index) => {
-    batch.set(itemRefByIndex(index), item);
-  });
-
-  await batch.commit();
+.stat-card {
+  padding: 18px 18px 16px;
+  position: relative;
+  overflow: hidden;
 }
 
-// ==============================
-// Transaction-safe item loading
-// ==============================
-async function txGetAllItems(transaction) {
-  const items = [];
-  for (let i = 0; i < ITEM_COUNT; i++) {
-    const ref = itemRefByIndex(i);
-    const snap = await transaction.get(ref);
-    if (snap.exists()) {
-      items.push({ id: snap.id, ...snap.data() });
-    }
+.stat-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  opacity: 0.9;
+}
+
+.stat-card h3 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: var(--muted);
+}
+
+.stat-card .value {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.panel {
+  padding: 18px;
+}
+
+.panel h2 {
+  margin: 0 0 14px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--text);
+}
+
+/* ==============================
+   List / Queue
+============================== */
+.list {
+  display: grid;
+  gap: 10px;
+}
+
+.list-item {
+  background: linear-gradient(180deg, rgba(24, 37, 58, 0.92), rgba(21, 32, 50, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px 14px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.list-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(76, 194, 255, 0.2);
+  background: linear-gradient(180deg, rgba(27, 42, 66, 0.96), rgba(22, 34, 53, 0.98));
+}
+
+.list-item .meta {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+/* ==============================
+   Large stage cards (live/backstage/blue)
+============================== */
+.card-large {
+  background:
+    linear-gradient(180deg, rgba(19, 29, 47, 0.96), rgba(14, 21, 34, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 18px;
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-large::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+}
+
+.card-large h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.15px;
+  color: var(--muted);
+}
+
+.card-large .title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.card-large .performers {
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.card-large .timer {
+  font-size: 18px;
+  color: #9edfff;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* ==============================
+   Banners / Hold
+============================== */
+.banner {
+  margin-top: 18px;
+  background: linear-gradient(180deg, rgba(15, 26, 43, 0.95), rgba(12, 21, 35, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 16px;
+  border-radius: 999px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.35px;
+  box-shadow: var(--shadow-soft);
+}
+
+.hold-bar {
+  background: linear-gradient(180deg, rgba(255, 93, 93, 0.92), rgba(226, 66, 66, 0.95));
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 0.7px;
+  box-shadow: 0 10px 24px rgba(255, 93, 93, 0.22);
+}
+
+/* ==============================
+   Controls / Buttons
+============================== */
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+button {
+  appearance: none;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: linear-gradient(180deg, #1d2f4a, #16253a);
+  color: #eef5ff;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.18);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease, border-color 120ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  border-color: rgba(76, 194, 255, 0.2);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(76, 194, 255, 0.22),
+    0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+button.secondary {
+  background: linear-gradient(180deg, #33455f, #2c3b52);
+  color: #f5f8ff;
+}
+
+button.danger {
+  background: linear-gradient(180deg, #ea5b5b, #d64747);
+  color: #fff;
+}
+
+button.warn {
+  background: linear-gradient(180deg, #d88939, #c96c1f);
+  color: #fff;
+}
+
+button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ==============================
+   Tables
+============================== */
+.table,
+#runTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.table th,
+.table td,
+#runTable th,
+#runTable td {
+  padding: 10px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.table th,
+#runTable th {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.table tbody tr:hover,
+#runTable tbody tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.table tbody tr:last-child td,
+#runTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ==============================
+   Tags / Status pills
+============================== */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.tag.live {
+  background: rgba(53, 215, 138, 0.14);
+  border-color: rgba(53, 215, 138, 0.3);
+  color: #9af0c6;
+}
+
+.tag.backstage {
+  background: rgba(76, 194, 255, 0.14);
+  border-color: rgba(76, 194, 255, 0.28);
+  color: #b5eaff;
+}
+
+.tag.blue {
+  background: rgba(255, 177, 76, 0.16);
+  border-color: rgba(255, 177, 76, 0.28);
+  color: #ffd9a6;
+}
+
+.tag.done {
+  background: rgba(111, 140, 255, 0.14);
+  border-color: rgba(111, 140, 255, 0.24);
+  color: #c2ceff;
+}
+
+.tag.queued {
+  background: rgba(170, 182, 204, 0.12);
+  border-color: rgba(170, 182, 204, 0.2);
+  color: #cad3e3;
+}
+
+/* ==============================
+   Forms / Utility
+============================== */
+.small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+input[type="text"],
+input[type="number"] {
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255,255,255,0.03);
+  color: var(--text);
+  font-size: 14px;
+}
+
+input[type="text"]::placeholder,
+input[type="number"]::placeholder {
+  color: var(--muted-2);
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus {
+  outline: none;
+  border-color: rgba(76, 194, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(76, 194, 255, 0.18);
+}
+
+.flex {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.right {
+  text-align: right;
+}
+
+/* ==============================
+   Nicer emphasis for key values
+   (works with your existing IDs if present)
+============================== */
+#scheduleStatus,
+#operatorOffset,
+#operatorShowStatus,
+#projectedEnd,
+#operatorProjectedEnd,
+#currentTime,
+#operatorTime {
+  font-variant-numeric: tabular-nums;
+}
+
+#scheduleStatus,
+#operatorOffset {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+#currentElapsed,
+#currentOverUnder,
+#currentPlanned,
+#backstagePlanned,
+#bluePlanned,
+#currentStartTime {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==============================
+   Operator Theme (Light / Enterprise Control Room)
+   Applied when <body class="operator">
+============================== */
+.operator {
+  color-scheme: light;
+
+  --bg: #f3f6fb;
+  --bg-alt: #eaf0f8;
+
+  --panel: #ffffff;
+  --panel-alt: #f4f7fc;
+  --panel-soft: #eef3fb;
+  --border: rgba(16, 24, 40, 0.08);
+
+  --text: #111827;
+  --muted: #5f6b7f;
+  --muted-2: #7a879a;
+
+  --accent: #2563eb;
+  --accent-2: #4f46e5;
+  --success: #16a34a;
+  --warn: #d97706;
+  --danger: #dc2626;
+  --info: #0284c7;
+
+  --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  --shadow-soft: 0 8px 20px rgba(15, 23, 42, 0.05);
+
+  background:
+    radial-gradient(1200px 700px at 0% -10%, rgba(37, 99, 235, 0.07), transparent 55%),
+    radial-gradient(900px 600px at 100% 0%, rgba(79, 70, 229, 0.05), transparent 60%),
+    linear-gradient(180deg, #f6f8fc 0%, #f3f6fb 100%);
+  color: var(--text);
+}
+
+.operator header {
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(16, 24, 40, 0.07);
+}
+
+.operator header h1 {
+  color: #0f172a;
+}
+
+.operator header .status-chip {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.06));
+  border-color: rgba(37, 99, 235, 0.2);
+  color: #1d4ed8;
+}
+
+.operator main {
+  background: transparent;
+}
+
+.operator .stat-card,
+.operator .panel {
+  background: linear-gradient(180deg, #ffffff, #fcfdff);
+  border: 1px solid rgba(16, 24, 40, 0.07);
+  box-shadow: var(--shadow);
+}
+
+.operator .stat-card::before {
+  background: linear-gradient(180deg, #2563eb, #4f46e5);
+}
+
+.operator .stat-card h3,
+.operator .panel h2,
+.operator .list-item .meta,
+.operator .small,
+.operator .toggle {
+  color: var(--muted);
+}
+
+.operator .stat-card .value,
+.operator .card-large .title {
+  color: #0f172a;
+}
+
+.operator .list-item {
+  background: linear-gradient(180deg, #f8fbff, #f3f7fd);
+  border: 1px solid rgba(16, 24, 40, 0.05);
+}
+
+.operator .list-item:hover {
+  border-color: rgba(37, 99, 235, 0.15);
+  background: linear-gradient(180deg, #fbfdff, #f5f9ff);
+}
+
+.operator .card-large {
+  background: linear-gradient(180deg, #ffffff, #fdfefe);
+  border: 1px solid rgba(16, 24, 40, 0.07);
+  box-shadow: var(--shadow-soft);
+}
+
+.operator .card-large::before {
+  background: linear-gradient(180deg, #2563eb, #4f46e5);
+}
+
+.operator .card-large h3 {
+  color: #64748b;
+}
+
+.operator .card-large .performers {
+  color: #5f6b7f;
+}
+
+.operator .card-large .timer {
+  color: #1d4ed8;
+}
+
+.operator .banner {
+  background: linear-gradient(180deg, #0f172a, #111827);
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+.operator .hold-bar {
+  background: linear-gradient(180deg, #ef4444, #dc2626);
+  box-shadow: 0 12px 24px rgba(220, 38, 38, 0.16);
+}
+
+.operator button {
+  background: linear-gradient(180deg, #1d4ed8, #1e40af);
+  color: #fff;
+  border-color: rgba(29, 78, 216, 0.12);
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.18);
+}
+
+.operator button:hover {
+  border-color: rgba(37, 99, 235, 0.22);
+}
+
+.operator button.secondary {
+  background: linear-gradient(180deg, #64748b, #475569);
+  box-shadow: 0 8px 16px rgba(71, 85, 105, 0.14);
+}
+
+.operator button.warn {
+  background: linear-gradient(180deg, #f59e0b, #d97706);
+  box-shadow: 0 8px 16px rgba(217, 119, 6, 0.14);
+}
+
+.operator button.danger {
+  background: linear-gradient(180deg, #ef4444, #dc2626);
+  box-shadow: 0 8px 16px rgba(220, 38, 38, 0.14);
+}
+
+.operator .table th,
+.operator .table td,
+.operator #runTable th,
+.operator #runTable td {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  color: #1f2937;
+}
+
+.operator .table th,
+.operator #runTable th {
+  background: #f5f8fd;
+  color: #5f6b7f;
+}
+
+.operator .table tbody tr:nth-child(even),
+.operator #runTable tbody tr:nth-child(even) {
+  background: rgba(15, 23, 42, 0.015);
+}
+
+.operator .table tbody tr:hover,
+.operator #runTable tbody tr:hover {
+  background: rgba(37, 99, 235, 0.035);
+}
+
+.operator .tag.live {
+  background: rgba(22, 163, 74, 0.1);
+  border-color: rgba(22, 163, 74, 0.18);
+  color: #15803d;
+}
+
+.operator .tag.backstage {
+  background: rgba(2, 132, 199, 0.1);
+  border-color: rgba(2, 132, 199, 0.16);
+  color: #0369a1;
+}
+
+.operator .tag.blue {
+  background: rgba(217, 119, 6, 0.1);
+  border-color: rgba(217, 119, 6, 0.16);
+  color: #b45309;
+}
+
+.operator .tag.done {
+  background: rgba(79, 70, 229, 0.09);
+  border-color: rgba(79, 70, 229, 0.14);
+  color: #4338ca;
+}
+
+.operator .tag.queued {
+  background: rgba(100, 116, 139, 0.08);
+  border-color: rgba(100, 116, 139, 0.12);
+  color: #475569;
+}
+
+.operator input[type="text"],
+.operator input[type="number"] {
+  background: #fff;
+  color: #111827;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+.operator input[type="text"]:focus,
+.operator input[type="number"]:focus {
+  border-color: rgba(37, 99, 235, 0.42);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+/* ==============================
+   Responsive
+============================== */
+@media (max-width: 1200px) {
+  .grid-two {
+    grid-template-columns: 1fr;
   }
-  items.sort((a, b) => (a.order || 0) - (b.order || 0));
-  return items;
 }
 
-// ==============================
-// Operator actions
-// ==============================
-async function startCurrentItem() {
-  await runTransaction(db, async (transaction) => {
-    const showSnap = await transaction.get(showRef);
-    if (!showSnap.exists()) throw new Error("Show not initialized. Click Init Show / Reset first.");
-
-    const showData = showSnap.data();
-    const items = await txGetAllItems(transaction);
-
-    const currentId = showData.currentItemId;
-    const currentItem = items.find((it) => it.id === currentId);
-    if (!currentItem) throw new Error(`Current item not found: ${currentId}`);
-
-    items.forEach((it) => {
-      if (it.status === "live" && it.id !== currentId) {
-        transaction.update(doc(itemsRef, it.id), { status: "queued" });
-      }
-    });
-
-    transaction.update(doc(itemsRef, currentId), {
-      status: "live",
-      actualStartAt: currentItem.actualStartAt || new Date(),
-    });
-
-    const previewItems = items.map((it) =>
-      it.id === currentId ? { ...it, status: "live", actualStartAt: currentItem.actualStartAt || new Date() } : it
-    );
-    const { projectedEndAt, offsetSeconds } = computeProjectedTiming(showData, previewItems);
-
-    transaction.update(showRef, {
-      status: showData.status === "hold" ? "hold" : "running",
-      projectedEndAt,
-      offsetSeconds,
-      updatedAt: serverTimestamp(),
-    });
-  });
-}
-
-async function endCurrentItem() {
-  await runTransaction(db, async (transaction) => {
-    const showSnap = await transaction.get(showRef);
-    if (!showSnap.exists()) throw new Error("Show not initialized. Click Init Show / Reset first.");
-    const showData = showSnap.data();
-
-    const items = await txGetAllItems(transaction);
-
-    const liveItem = items.find((it) => it.status === "live") || items.find((it) => it.id === showData.currentItemId);
-    if (!liveItem) throw new Error("No current/live item found to end.");
-
-    transaction.update(doc(itemsRef, liveItem.id), {
-      status: "done",
-      actualEndAt: new Date(),
-    });
-
-    const remaining = items
-      .filter((it) => it.id !== liveItem.id)
-      .map((it) => (it.status === "done" ? it : { ...it, status: "queued" }))
-      .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-    const notDone = remaining.filter((it) => it.status !== "done");
-    const nextBackstage = notDone[0] || null;
-    const nextBlue = notDone[1] || null;
-
-    if (nextBackstage) transaction.update(doc(itemsRef, nextBackstage.id), { status: "backstage" });
-    if (nextBlue) transaction.update(doc(itemsRef, nextBlue.id), { status: "blue" });
-
-    const nextCurrentId = nextBackstage ? nextBackstage.id : null;
-    const nextShowStatus = nextCurrentId ? (showData.status === "hold" ? "hold" : "running") : "stopped";
-
-    const updatedItemsForTiming = [
-      { ...liveItem, status: "done" },
-      ...remaining.map((it) => {
-        if (it.id === nextBackstage?.id) return { ...it, status: "backstage" };
-        if (it.id === nextBlue?.id) return { ...it, status: "blue" };
-        return it;
-      }),
-    ];
-
-    const { projectedEndAt, offsetSeconds } = computeProjectedTiming(showData, updatedItemsForTiming);
-
-    transaction.update(showRef, {
-      status: nextShowStatus,
-      currentItemId: nextCurrentId || "",
-      projectedEndAt,
-      offsetSeconds,
-      updatedAt: serverTimestamp(),
-    });
-  });
-}
-
-async function toggleHold(currentStatus, message) {
-  const nextStatus = currentStatus === "hold" ? "running" : "hold";
-  await updateDoc(showRef, {
-    status: nextStatus,
-    holdMessage: nextStatus === "hold" ? message || "HOLD" : "",
-    updatedAt: serverTimestamp(),
-  });
-}
-
-async function setCurrentItem(itemId) {
-  await updateDoc(showRef, {
-    currentItemId: itemId,
-    updatedAt: serverTimestamp(),
-  });
-}
-
-async function updatePlannedSeconds(itemId, plannedSeconds) {
-  await updateDoc(doc(itemsRef, itemId), { plannedSeconds });
-}
-
-async function undoAction(action) {
-  if (!action) return;
-
-  if (action.type === "start") {
-    await runTransaction(db, async (transaction) => {
-      const itemRef = doc(itemsRef, action.itemId);
-      transaction.update(itemRef, {
-        status: action.previousStatus || "backstage",
-        actualStartAt: action.previousStart || null,
-      });
-      transaction.update(showRef, {
-        status: action.showStatus || "stopped",
-        updatedAt: serverTimestamp(),
-      });
-    });
-    return;
+@media (max-width: 768px) {
+  header {
+    padding: 14px 16px;
   }
 
-  if (action.type === "end") {
-    const batch = writeBatch(db);
-    action.items.forEach((item) => {
-      batch.update(doc(itemsRef, item.id), {
-        status: item.status,
-        actualStartAt: item.actualStartAt || null,
-        actualEndAt: item.actualEndAt || null,
-      });
-    });
-    batch.update(showRef, {
-      currentItemId: action.show.currentItemId || "item-1",
-      status: action.show.status || "stopped",
-      updatedAt: serverTimestamp(),
-    });
-    await batch.commit();
+  header h1 {
+    font-size: 18px;
+  }
+
+  main {
+    padding: 16px;
+  }
+
+  .top-stats {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .stat-card,
+  .panel {
+    border-radius: 14px;
+  }
+
+  .card-large .title {
+    font-size: 20px;
+  }
+
+  .controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .table,
+  #runTable {
+    font-size: 13px;
   }
 }
 
-// ==============================
-// View logic
-// ==============================
-function getPerformersText(item) {
-  if (!item || !item.performers || !item.performers.length) return "—";
-  return item.performers.join(", ");
-}
-
-function summarizeUpcoming(items, currentId) {
-  const doneItems = items.filter((item) => item.status === "done").slice(-2);
-  const currentItem = items.find((item) => item.id === currentId);
-  const backstage = items.find((item) => item.status === "backstage");
-  const blue = items.find((item) => item.status === "blue");
-  const queued = items.filter((item) => item.status === "queued").slice(0, 3);
-  return [...doneItems, currentItem, backstage, blue, ...queued].filter(Boolean);
-}
-
-function getElapsedSeconds(actualStartAt) {
-  const start = normalizeTimestamp(actualStartAt);
-  if (!start) return null;
-  return Math.floor((Date.now() - start.getTime()) / 1000);
-}
-
-function getProjectedStartTimes(items) {
-  const live = items.find((item) => item.status === "live");
-  const backstage = items.find((item) => item.status === "backstage");
-  const blue = items.find((item) => item.status === "blue");
-
-  const now = Date.now();
-  const liveStart = normalizeTimestamp(live?.actualStartAt);
-  const liveBase = liveStart ? liveStart.getTime() : now;
-  const livePlanned = live?.plannedSeconds || 0;
-
-  const backstageStart = live ? liveBase + livePlanned * 1000 : now;
-  const blueStart = backstageStart + (backstage?.plannedSeconds || 0) * 1000;
-
-  return {
-    backstageEtaSeconds: Math.max(0, Math.floor((backstageStart - now) / 1000)),
-    blueEtaSeconds: Math.max(0, Math.floor((blueStart - now) / 1000)),
-  };
-}
-
-function getOpenStatusPill(status) {
-  const s = String(status || "").toUpperCase();
-  return `<span class="tag ${String(status || "").toLowerCase()}">${s || "—"}</span>`;
-}
-
-function applyOpenScheduleColor(el, label) {
-  if (!el) return;
-  el.classList.remove("status-ahead", "status-behind", "status-ontime");
-  if (label === "AHEAD") el.classList.add("status-ahead");
-  else if (label === "BEHIND") el.classList.add("status-behind");
-  else el.classList.add("status-ontime");
-}
-
-// ------------------------------
-// OPEN VIEW
-// ------------------------------
-function initOpenView() {
-  const scheduleStatusEl = document.getElementById("scheduleStatus");
-  if (!scheduleStatusEl) return; // not on open.html
-
-  const projectedEndEl = document.getElementById("projectedEnd");
-  const currentTimeEl = document.getElementById("currentTime");
-  const showStatusEl = document.getElementById("showStatus");
-  const holdBarEl = document.getElementById("holdBar");
-  const upcomingListEl = document.getElementById("upcomingList");
-
-  const liveTitleEl = document.getElementById("liveTitle");
-  const livePerformersEl = document.getElementById("livePerformers");
-
-  const backstageTitleEl = document.getElementById("backstageTitle");
-  const backstagePerformersEl = document.getElementById("backstagePerformers");
-  const backstageTimerEl = document.getElementById("backstageTimer");
-
-  const blueTitleEl = document.getElementById("blueTitle");
-  const bluePerformersEl = document.getElementById("bluePerformers");
-  const blueTimerEl = document.getElementById("blueTimer");
-
-  let showData = null;
-  let items = [];
-
-  function updateClock() {
-    const now = new Date();
-    safeSetText(currentTimeEl, formatClock(now));
-    if (!items.length) return;
-
-    const { backstageEtaSeconds, blueEtaSeconds } = getProjectedStartTimes(items);
-    safeSetText(backstageTimerEl, `GO TO STAGE IN: ${formatDuration(backstageEtaSeconds)}`);
-    safeSetText(blueTimerEl, `GET READY IN: ${formatDuration(blueEtaSeconds)}`);
+@media (max-width: 520px) {
+  .controls {
+    grid-template-columns: 1fr;
   }
 
-  subscribeShow((data) => {
-    showData = data;
-    if (!data) return;
+  .table th,
+  .table td,
+  #runTable th,
+  #runTable td {
+    padding: 8px 8px;
+  }
 
-    const offset = data.offsetSeconds;
-    const label = getStatusLabel(offset);
-    const scheduleText = label === "ON TIME" ? "ON TIME" : `${label} ${formatOffset(offset)}`;
-    safeSetText(scheduleStatusEl, scheduleText);
-    applyOpenScheduleColor(scheduleStatusEl, label);
-
-    safeSetText(projectedEndEl, formatClock(data.projectedEndAt?.toDate?.() || data.projectedEndAt));
-    safeSetText(showStatusEl, data.status ? data.status.toUpperCase() : "—");
-
-    if (showStatusEl) {
-      showStatusEl.classList.remove("status-ahead", "status-behind", "status-ontime");
-      if (data.status === "running") showStatusEl.classList.add("status-ahead");
-      else if (data.status === "hold") showStatusEl.classList.add("status-behind");
-      else showStatusEl.classList.add("status-ontime");
-    }
-
-    if (holdBarEl) {
-      if (data.status === "hold") {
-        holdBarEl.style.display = "block";
-        holdBarEl.textContent = data.holdMessage || "HOLD";
-      } else {
-        holdBarEl.style.display = "none";
-      }
-    }
-  });
-
-  subscribeItems((list) => {
-    items = list;
-
-    const liveItem =
-      items.find((item) => item.status === "live") ||
-      items.find((item) => item.id === showData?.currentItemId);
-
-    const backstageItem = items.find((item) => item.status === "backstage");
-    const blueItem = items.find((item) => item.status === "blue");
-
-    safeSetText(liveTitleEl, liveItem?.title || "—");
-    safeSetText(livePerformersEl, getPerformersText(liveItem));
-
-    safeSetText(backstageTitleEl, backstageItem?.title || "—");
-    safeSetText(backstagePerformersEl, getPerformersText(backstageItem));
-
-    safeSetText(blueTitleEl, blueItem?.title || "—");
-    safeSetText(bluePerformersEl, getPerformersText(blueItem));
-
-    if (!upcomingListEl) return;
-    upcomingListEl.innerHTML = "";
-
-    summarizeUpcoming(items, showData?.currentItemId).forEach((item) => {
-      const row = document.createElement("div");
-      row.className = "list-item";
-      row.innerHTML = `
-        <div>
-          <div>${item.title}</div>
-          <div class="meta">${item.type || ""}</div>
-        </div>
-        <div class="meta">${getOpenStatusPill(item.status)}</div>
-      `;
-      upcomingListEl.appendChild(row);
-    });
-  });
-
-  setInterval(updateClock, 1000);
-  updateClock();
+  .list-item {
+    align-items: flex-start;
+  }
 }
 
-// ------------------------------
-// OPERATOR VIEW
-// ------------------------------
-function initOperatorView() {
-  const operatorTimeEl = document.getElementById("operatorTime");
-  if (!operatorTimeEl) return; // not on operator.html
-
-  const operatorProjectedEndEl = document.getElementById("operatorProjectedEnd");
-  const operatorOffsetEl = document.getElementById("operatorOffset");
-  const operatorShowStatusEl = document.getElementById("operatorShowStatus");
-
-  const currentTitleEl = document.getElementById("currentTitle");
-  const currentTypeEl = document.getElementById("currentType");
-  const currentStatusEl = document.getElementById("currentStatus");
-  const currentPlannedEl = document.getElementById("currentPlanned");
-  const currentElapsedEl = document.getElementById("currentElapsed");
-  const currentOverUnderEl = document.getElementById("currentOverUnder");
-  const currentStartTimeEl = document.getElementById("currentStartTime");
-
-  const backstageTitleEl = document.getElementById("backstageTitle");
-  const backstagePlannedEl = document.getElementById("backstagePlanned");
-  const blueTitleEl = document.getElementById("blueTitle");
-  const bluePlannedEl = document.getElementById("bluePlanned");
-
-  const startBtn = document.getElementById("startBtn");
-  const endBtn = document.getElementById("endBtn");
-  const undoBtn = document.getElementById("undoBtn");
-  const holdBtn = document.getElementById("holdBtn");
-  const initBtn = document.getElementById("initBtn");
-
-  const runTableBody = document.querySelector("#runTable tbody");
-  const advancedToggle = document.getElementById("advancedToggle");
-  const advancedHeader = document.getElementById("advancedHeader");
-
-  let showData = null;
-  let items = [];
-  let lastAction = null;
-
-  function renderShow() {
-    if (!showData) return;
-
-    safeSetText(operatorProjectedEndEl, formatClock(showData.projectedEndAt?.toDate?.() || showData.projectedEndAt));
-    safeSetText(
-      operatorOffsetEl,
-      showData.offsetSeconds == null
-        ? "—"
-        : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`
-    );
-    safeSetText(operatorShowStatusEl, showData.status?.toUpperCase() || "—");
-
-    const currentItem =
-      items.find((item) => item.id === showData.currentItemId) ||
-      items.find((item) => item.status === "live");
-
-    const backstageItem = items.find((item) => item.status === "backstage");
-    const blueItem = items.find((item) => item.status === "blue");
-
-    safeSetText(currentTitleEl, currentItem?.title || "—");
-    safeSetText(currentTypeEl, currentItem?.type || "—");
-    safeSetText(currentStatusEl, currentItem?.status ? currentItem.status.toUpperCase() : "—");
-    safeSetText(currentPlannedEl, currentItem?.plannedSeconds ? formatDuration(currentItem.plannedSeconds) : "—");
-    safeSetText(currentStartTimeEl, formatClock(currentItem?.actualStartAt?.toDate?.() || currentItem?.actualStartAt));
-
-    safeSetText(backstageTitleEl, backstageItem?.title || "—");
-    safeSetText(backstagePlannedEl, backstageItem?.plannedSeconds ? formatDuration(backstageItem.plannedSeconds) : "—");
-
-    safeSetText(blueTitleEl, blueItem?.title || "—");
-    safeSetText(bluePlannedEl, blueItem?.plannedSeconds ? formatDuration(blueItem.plannedSeconds) : "—");
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
   }
-
-  function renderRunTable() {
-    if (!runTableBody) return;
-    runTableBody.innerHTML = "";
-
-    items.forEach((item) => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${item.order ?? "—"}</td>
-        <td>${item.title ?? "—"}</td>
-        <td>${item.type ?? "—"}</td>
-        <td><span class="tag ${item.status}">${item.status ?? "—"}</span></td>
-        <td>${item.plannedSeconds ? formatDuration(item.plannedSeconds) : "—"}</td>
-        <td>${formatClock(item.actualStartAt?.toDate?.() || item.actualStartAt)}</td>
-        <td>${formatClock(item.actualEndAt?.toDate?.() || item.actualEndAt)}</td>
-        <td class="advanced" style="display:none;">
-          <div class="flex">
-            <button data-action="set" data-id="${item.id}" class="secondary">Set as current</button>
-            <button data-action="edit" data-id="${item.id}" class="secondary">Edit planned</button>
-          </div>
-        </td>
-      `;
-      runTableBody.appendChild(row);
-    });
-  }
-
-  function updateClock() {
-    safeSetText(operatorTimeEl, formatClock(new Date()));
-    const currentItem = items.find((item) => item.id === showData?.currentItemId);
-    const elapsed = getElapsedSeconds(currentItem?.actualStartAt);
-    safeSetText(currentElapsedEl, elapsed == null ? "—" : formatDuration(elapsed));
-
-    const planned = currentItem?.plannedSeconds || 0;
-    if (elapsed != null) {
-      const diff = elapsed - planned;
-      const sign = diff > 0 ? "+" : diff < 0 ? "-" : "";
-      safeSetText(currentOverUnderEl, `${sign}${formatDuration(Math.abs(diff))}`);
-    } else {
-      safeSetText(currentOverUnderEl, "—");
-    }
-  }
-
-  subscribeShow((data) => {
-    showData = data;
-    renderShow();
-  });
-
-  subscribeItems((list) => {
-    items = list;
-    renderShow();
-    renderRunTable();
-  });
-
-  async function safeRun(fn) {
-    try {
-      await fn();
-    } catch (e) {
-      console.error(e);
-      alert(e?.message || String(e));
-    }
-  }
-
-  startBtn?.addEventListener("click", () =>
-    safeRun(async () => {
-      const currentItem = items.find((item) => item.id === showData?.currentItemId);
-      lastAction = {
-        type: "start",
-        itemId: currentItem?.id,
-        previousStatus: currentItem?.status,
-        previousStart: currentItem?.actualStartAt || null,
-        showStatus: showData?.status,
-      };
-      await startCurrentItem();
-    })
-  );
-
-  endBtn?.addEventListener("click", () =>
-    safeRun(async () => {
-      const snapshot = items.map((item) => ({
-        id: item.id,
-        status: item.status,
-        actualStartAt: item.actualStartAt || null,
-        actualEndAt: item.actualEndAt || null,
-      }));
-      lastAction = {
-        type: "end",
-        show: {
-          currentItemId: showData?.currentItemId,
-          status: showData?.status,
-        },
-        items: snapshot,
-      };
-      await endCurrentItem();
-    })
-  );
-
-  undoBtn?.addEventListener("click", () =>
-    safeRun(async () => {
-      if (!lastAction) return;
-      await undoAction(lastAction);
-      lastAction = null;
-    })
-  );
-
-  holdBtn?.addEventListener("click", () =>
-    safeRun(async () => {
-      const message = prompt("Hold message", showData?.holdMessage || "HOLD");
-      await toggleHold(showData?.status, message);
-    })
-  );
-
-  initBtn?.addEventListener("click", () =>
-    safeRun(async () => {
-      if (!confirm("Reset the show? This will overwrite all data.")) return;
-      await initShow();
-    })
-  );
-
-  advancedToggle?.addEventListener("change", () => {
-    const isEnabled = advancedToggle.checked;
-    document.querySelectorAll(".advanced").forEach((cell) => {
-      cell.style.display = isEnabled ? "table-cell" : "none";
-    });
-    if (advancedHeader) advancedHeader.style.display = isEnabled ? "table-cell" : "none";
-  });
-
-  runTableBody?.addEventListener("click", (event) => {
-    const button = event.target.closest("button");
-    if (!button) return;
-    const action = button.dataset.action;
-    const itemId = button.dataset.id;
-
-    safeRun(async () => {
-      if (action === "set") {
-        await setCurrentItem(itemId);
-      }
-      if (action === "edit") {
-        const value = prompt("Enter planned seconds", "180");
-        const seconds = Number(value);
-        if (!Number.isNaN(seconds)) await updatePlannedSeconds(itemId, seconds);
-      }
-    });
-  });
-
-  setInterval(updateClock, 1000);
-  updateClock();
 }
 
-// ==============================
-// Boot
-// ==============================
-document.addEventListener("DOMContentLoaded", () => {
-  initOpenView();
-  initOperatorView();
-});
+

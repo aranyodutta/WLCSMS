@@ -115,7 +115,63 @@ function getStatusLabel(offsetSeconds) {
   if (Math.abs(offsetSeconds) <= 10) return "ON TIME";
   return offsetSeconds > 0 ? "BEHIND" : "AHEAD";
 }
+// ==============================
+// UI signal styling helpers
+// ==============================
+function setSignalText(el, tone = "neutral") {
+  if (!el) return;
 
+  const toneMap = {
+    neutral: "var(--text)",
+    muted: "var(--muted)",
+    info: "var(--accent)",
+    success: "var(--success)",
+    warn: "var(--warn)",
+    danger: "var(--danger)",
+  };
+
+  el.style.color = toneMap[tone] || toneMap.neutral;
+  el.style.fontWeight = "800";
+}
+
+function applyScheduleStatusVisual(el, offsetSeconds) {
+  const label = getStatusLabel(offsetSeconds);
+  if (label === "AHEAD") return setSignalText(el, "success");
+  if (label === "BEHIND") return setSignalText(el, "danger");
+  return setSignalText(el, "info");
+}
+
+function applyOffsetVisual(el, offsetSeconds) {
+  if (offsetSeconds == null || Number.isNaN(offsetSeconds)) return setSignalText(el, "muted");
+  if (Math.abs(offsetSeconds) <= 10) return setSignalText(el, "info");
+  return setSignalText(el, offsetSeconds > 0 ? "danger" : "success");
+}
+
+function applyShowStatusVisual(el, status) {
+  const s = String(status || "").toLowerCase();
+
+  if (s === "running") return setSignalText(el, "success");
+  if (s === "hold") return setSignalText(el, "warn");
+  if (s === "stopped") return setSignalText(el, "muted");
+  return setSignalText(el, "info");
+}
+
+function applyItemStatusVisual(el, status) {
+  const s = String(status || "").toLowerCase();
+
+  if (s === "live") return setSignalText(el, "success");
+  if (s === "backstage") return setSignalText(el, "info");
+  if (s === "blue") return setSignalText(el, "warn");
+  if (s === "done") return setSignalText(el, "info");
+  if (s === "queued") return setSignalText(el, "muted");
+  return setSignalText(el, "neutral");
+}
+
+function clearSignalText(el) {
+  if (!el) return;
+  el.style.color = "";
+  el.style.fontWeight = "";
+}
 // ==============================
 // Projected timing
 // ==============================
@@ -469,11 +525,15 @@ function initOpenView() {
     showData = data;
     if (!data) return;
 
-    const offset = data.offsetSeconds;
-    const label = getStatusLabel(offset);
-    scheduleStatusEl.textContent = label === "ON TIME" ? "ON TIME" : `${label} ${formatOffset(offset)}`;
-    projectedEndEl.textContent = formatClock(data.projectedEndAt?.toDate?.() || data.projectedEndAt);
-    showStatusEl.textContent = data.status ? data.status.toUpperCase() : "—";
+const offset = data.offsetSeconds;
+const label = getStatusLabel(offset);
+scheduleStatusEl.textContent = label === "ON TIME" ? "ON TIME" : `${label} ${formatOffset(offset)}`;
+applyScheduleStatusVisual(scheduleStatusEl, offset);
+
+projectedEndEl.textContent = formatClock(data.projectedEndAt?.toDate?.() || data.projectedEndAt);
+
+showStatusEl.textContent = data.status ? data.status.toUpperCase() : "—";
+applyShowStatusVisual(showStatusEl, data.status);
 
     if (data.status === "hold") {
       holdBarEl.style.display = "block";
@@ -562,12 +622,14 @@ function initOperatorView() {
     if (!showData) return;
 
     operatorProjectedEndEl.textContent = formatClock(showData.projectedEndAt?.toDate?.() || showData.projectedEndAt);
-    operatorOffsetEl.textContent =
-      showData.offsetSeconds == null
-        ? "—"
-        : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`;
+operatorOffsetEl.textContent =
+  showData.offsetSeconds == null
+    ? "—"
+    : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`;
+applyOffsetVisual(operatorOffsetEl, showData.offsetSeconds);
 
-    operatorShowStatusEl.textContent = showData.status?.toUpperCase() || "—";
+operatorShowStatusEl.textContent = showData.status?.toUpperCase() || "—";
+applyShowStatusVisual(operatorShowStatusEl, showData.status);
 
     const currentItem =
       items.find((item) => item.id === showData.currentItemId) ||
@@ -579,6 +641,7 @@ function initOperatorView() {
     currentTitleEl.textContent = currentItem?.title || "—";
     currentTypeEl.textContent = currentItem?.type || "—";
     currentStatusEl.textContent = currentItem?.status ? currentItem.status.toUpperCase() : "—";
+applyItemStatusVisual(currentStatusEl, currentItem?.status);
     currentPlannedEl.textContent = currentItem?.plannedSeconds ? formatDuration(currentItem.plannedSeconds) : "—";
     currentStartTimeEl.textContent = formatClock(currentItem?.actualStartAt?.toDate?.() || currentItem?.actualStartAt);
 
@@ -618,15 +681,25 @@ function initOperatorView() {
     const elapsed = getElapsedSeconds(currentItem?.actualStartAt);
     currentElapsedEl.textContent = elapsed == null ? "—" : formatDuration(elapsed);
 
-    const planned = currentItem?.plannedSeconds || 0;
-    if (elapsed != null) {
-      const diff = elapsed - planned;
-      const sign = diff > 0 ? "+" : diff < 0 ? "-" : "";
-      currentOverUnderEl.textContent = `${sign}${formatDuration(Math.abs(diff))}`;
-    } else {
-      currentOverUnderEl.textContent = "—";
-    }
+const planned = currentItem?.plannedSeconds || 0;
+if (elapsed != null) {
+  const diff = elapsed - planned;
+  const sign = diff > 0 ? "+" : diff < 0 ? "-" : "";
+  currentOverUnderEl.textContent = `${sign}${formatDuration(Math.abs(diff))}`;
+
+  // + means over planned time (behind) -> red
+  // - means under planned time (ahead) -> green
+  if (Math.abs(diff) <= 10) {
+    setSignalText(currentOverUnderEl, "info");
+  } else if (diff > 0) {
+    setSignalText(currentOverUnderEl, "danger");
+  } else {
+    setSignalText(currentOverUnderEl, "success");
   }
+} else {
+  currentOverUnderEl.textContent = "—";
+  setSignalText(currentOverUnderEl, "muted");
+}
 
   subscribeShow((data) => {
     showData = data;

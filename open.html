@@ -4,59 +4,66 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SMS Open View</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <header>
     <h1>SMS — OPEN VIEW</h1>
-    <span class="status-chip" id="showStatus">Loading…</span>
+    <div class="status-chip" id="showStatus">LOADING…</div>
   </header>
+
   <main>
-    <div id="holdBar" class="hold-bar" style="display:none;"></div>
-    <section class="top-stats">
+    <div class="hold-bar" id="holdBar" style="display:none;"></div>
+
+    <div class="top-stats">
       <div class="stat-card">
-        <h3>Schedule Status</h3>
+        <h3>SCHEDULE STATUS</h3>
         <div class="value" id="scheduleStatus">—</div>
       </div>
+
       <div class="stat-card">
-        <h3>Projected End</h3>
+        <h3>PROJECTED END</h3>
         <div class="value" id="projectedEnd">—</div>
       </div>
+
       <div class="stat-card">
-        <h3>Current Time</h3>
+        <h3>CURRENT TIME</h3>
         <div class="value" id="currentTime">—</div>
       </div>
-    </section>
+    </div>
 
-    <section class="grid-two">
-      <div class="panel">
+    <div class="grid-two">
+      <section class="panel">
         <h2>Upcoming</h2>
         <div class="list" id="upcomingList"></div>
-      </div>
-      <div>
+      </section>
+
+      <section>
         <div class="card-large">
-          <h3>On Stage (Now)</h3>
+          <h3>ON STAGE (NOW)</h3>
           <div class="title" id="liveTitle">—</div>
           <div class="performers" id="livePerformers">—</div>
         </div>
+
         <div class="card-large">
-          <h3>Backstage (Next)</h3>
+          <h3>BACKSTAGE (NEXT)</h3>
           <div class="title" id="backstageTitle">—</div>
           <div class="performers" id="backstagePerformers">—</div>
           <div class="timer" id="backstageTimer">GO TO STAGE IN: —</div>
         </div>
+
         <div class="card-large">
-          <h3>Blue Zone (On Deck)</h3>
+          <h3>ON DECK</h3>
           <div class="title" id="blueTitle">—</div>
           <div class="performers" id="bluePerformers">—</div>
           <div class="timer" id="blueTimer">GET READY IN: —</div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
-    <div class="banner">IF YOU ARE IN BLUE ZONE, YOU MUST BE READY TO WALK.</div>
+    <div class="banner">IF YOU ARE ON DECK, YOU MUST BE READY TO WALK.</div>
   </main>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

@@ -3,85 +3,69 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SMS Operator View</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>SMS Operator</title>
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body class="operator">
   <header>
     <h1>SMS — OPERATOR</h1>
-    <span class="status-chip" id="operatorStatus">Loading…</span>
+    <div class="status-chip" id="operatorHeaderStatus">LOADING…</div>
   </header>
+
   <main>
-    <section class="top-stats">
+    <div class="top-stats">
       <div class="stat-card">
-        <h3>Current Time</h3>
+        <h3>CURRENT TIME</h3>
         <div class="value" id="operatorTime">—</div>
       </div>
+
       <div class="stat-card">
-        <h3>Projected End</h3>
+        <h3>PROJECTED END</h3>
         <div class="value" id="operatorProjectedEnd">—</div>
       </div>
+
       <div class="stat-card">
-        <h3>Offset</h3>
+        <h3>OFFSET</h3>
         <div class="value" id="operatorOffset">—</div>
       </div>
+
       <div class="stat-card">
-        <h3>Show Status</h3>
+        <h3>SHOW STATUS</h3>
         <div class="value" id="operatorShowStatus">—</div>
       </div>
-    </section>
+    </div>
 
-    <section class="grid-two">
-      <div class="panel">
+    <div class="grid-two">
+      <section class="panel">
         <h2>Now Running</h2>
         <div class="list">
           <div class="list-item">
-            <div>
-              <div id="currentTitle">—</div>
-              <div class="meta" id="currentType">—</div>
-            </div>
+            <div><div id="currentTitle">—</div><div class="meta" id="currentType">—</div></div>
             <div class="meta" id="currentStatus">—</div>
           </div>
-          <div class="list-item">
-            <span>Planned</span>
-            <span id="currentPlanned">—</span>
-          </div>
-          <div class="list-item">
-            <span>Elapsed</span>
-            <span id="currentElapsed">—</span>
-          </div>
-          <div class="list-item">
-            <span>Over / Under</span>
-            <span id="currentOverUnder">—</span>
-          </div>
-          <div class="list-item">
-            <span>Start Time</span>
-            <span id="currentStartTime">—</span>
-          </div>
+          <div class="list-item"><div>Planned</div><div class="meta" id="currentPlanned">—</div></div>
+          <div class="list-item"><div>Elapsed</div><div class="meta" id="currentElapsed">—</div></div>
+          <div class="list-item"><div>Over / Under</div><div class="meta" id="currentOverUnder">—</div></div>
+          <div class="list-item"><div>Start Time</div><div class="meta" id="currentStartTime">—</div></div>
         </div>
-      </div>
-      <div class="panel">
+      </section>
+
+      <section class="panel">
         <h2>Next Up</h2>
         <div class="list">
           <div class="list-item">
-            <div>
-              <div id="backstageTitle">—</div>
-              <div class="meta">Backstage</div>
-            </div>
+            <div><div id="backstageTitle">—</div><div class="meta">Backstage</div></div>
             <div class="meta" id="backstagePlanned">—</div>
           </div>
           <div class="list-item">
-            <div>
-              <div id="blueTitle">—</div>
-              <div class="meta">Blue Zone</div>
-            </div>
+            <div><div id="blueTitle">—</div><div class="meta">On Deck</div></div>
             <div class="meta" id="bluePlanned">—</div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
-    <section class="panel" style="margin-top: 24px;">
+    <section class="panel" style="margin-top:16px;">
       <h2>Controls</h2>
       <div class="controls">
         <button id="startBtn">Start Item</button>
@@ -92,34 +76,33 @@
       </div>
     </section>
 
-    <section class="panel" style="margin-top: 24px;">
-      <div class="flex" style="justify-content: space-between;">
-        <h2>Run of Show</h2>
+    <section class="panel" style="margin-top:16px;">
+      <div class="flex" style="justify-content:space-between;">
+        <h2 style="margin:0;">Run of Show</h2>
         <label class="toggle">
           <input type="checkbox" id="advancedToggle" />
           Advanced Controls
         </label>
       </div>
-      <div style="max-height: 360px; overflow: auto;">
-        <table class="table" id="runTable">
-          <thead>
-            <tr>
-              <th>Order</th>
-              <th>Title</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Planned</th>
-              <th>Start</th>
-              <th>End</th>
-              <th id="advancedHeader" style="display:none;">Actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+
+      <table class="table" id="runTable" style="margin-top:10px;">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Planned</th>
+            <th>Start</th>
+            <th>End</th>
+            <th id="advancedHeader" style="display:none;">Advanced</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </section>
   </main>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

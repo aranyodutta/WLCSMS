@@ -1,8 +1,11 @@
-// ==============================
-// WLCSMS app.js — FULL FILE
-// Adds: Stage Requirements panel wiring + restores "ahead/behind" + status colors
-// Keeps: queue shift logic + ON DECK naming + existing operator/open rendering
-// ==============================
+/* ==============================
+   WLCSMS app.js — FULL FILE (stable)
+   - Operator controls stay visible (operator.html + CSS)
+   - Stage Requirements panel + CHANGE summaries
+   - "On Deck" naming (internally status = "blue", displayed as ON DECK)
+   - Queue behavior: LIVE -> BACKSTAGE -> ON DECK -> QUEUED
+   - Color signals: Ahead/Behind/On-Time + Show Status + Offset + Over/Under
+============================== */
 
 // ==============================
 // Firebase config
@@ -34,7 +37,8 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 // ==============================
-// Show seed data
+// Show seed data (edit later)
+// Add: requirements per item (mics, chairs, instruments, other)
 // ==============================
 const SHOW_ID = "main";
 
@@ -135,7 +139,7 @@ const showRef = doc(db, "shows", SHOW_ID);
 const itemsRef = collection(showRef, "items");
 
 function itemIdForIndex(i) {
-  return `item-${i + 1}`; // i is 0-based
+  return `item-${i + 1}`;
 }
 function itemRefByIndex(i) {
   return doc(itemsRef, itemIdForIndex(i));
@@ -162,7 +166,7 @@ function subscribeItems(callback) {
 }
 
 // ==============================
-// Formatting
+// Time helpers
 // ==============================
 function normalizeTimestamp(value) {
   if (!value) return null;
@@ -195,7 +199,6 @@ function getStatusLabel(offsetSeconds) {
   return offsetSeconds > 0 ? "BEHIND" : "AHEAD";
 }
 
-// Blue -> ON DECK (display only)
 function displayStatus(status) {
   const s = String(status || "").toLowerCase();
   if (s === "blue") return "ON DECK";
@@ -203,7 +206,7 @@ function displayStatus(status) {
 }
 
 // ==============================
-// Signal / color helpers (restores "ahead/behind" & status colors)
+// Signal / chip helpers (colors)
 // ==============================
 const SIGNAL_CLASSES = ["signal-success", "signal-danger", "signal-warn", "signal-info", "signal-muted"];
 const CHIP_CLASSES = ["chip-running", "chip-hold", "chip-stopped"];
@@ -212,7 +215,6 @@ function clearSignalClasses(el) {
   if (!el) return;
   SIGNAL_CLASSES.forEach((c) => el.classList.remove(c));
 }
-
 function applySignal(el, tone) {
   if (!el) return;
   clearSignalClasses(el);
@@ -225,31 +227,26 @@ function applySignal(el, tone) {
   };
   el.classList.add(map[tone] || "signal-info");
 }
-
 function applyScheduleSignal(el, offsetSeconds) {
   const label = getStatusLabel(offsetSeconds);
   if (label === "AHEAD") return applySignal(el, "success");
   if (label === "BEHIND") return applySignal(el, "danger");
   return applySignal(el, "info");
 }
-
 function applyOffsetSignal(el, offsetSeconds) {
   if (offsetSeconds == null || Number.isNaN(offsetSeconds)) return applySignal(el, "muted");
   if (Math.abs(offsetSeconds) <= 10) return applySignal(el, "info");
   return applySignal(el, offsetSeconds > 0 ? "danger" : "success");
 }
-
 function applyOverUnderSignal(el, diffSeconds) {
   if (diffSeconds == null || Number.isNaN(diffSeconds)) return applySignal(el, "muted");
   if (Math.abs(diffSeconds) <= 10) return applySignal(el, "info");
   return applySignal(el, diffSeconds > 0 ? "danger" : "success");
 }
-
 function clearChipClasses(el) {
   if (!el) return;
   CHIP_CLASSES.forEach((c) => el.classList.remove(c));
 }
-
 function applyShowStatusChip(el, status) {
   if (!el) return;
   clearChipClasses(el);
@@ -259,16 +256,8 @@ function applyShowStatusChip(el, status) {
   else el.classList.add("chip-stopped");
 }
 
-function applyShowStatusSignal(el, status) {
-  const s = String(status || "").toLowerCase();
-  if (s === "running") return applySignal(el, "success");
-  if (s === "hold") return applySignal(el, "warn");
-  if (s === "stopped") return applySignal(el, "muted");
-  return applySignal(el, "info");
-}
-
 // ==============================
-// Requirements helper
+// Requirements helpers
 // ==============================
 function getRequirement(item, key) {
   const req = item?.requirements;
@@ -277,6 +266,126 @@ function getRequirement(item, key) {
   if (val == null) return "—";
   const s = String(val).trim();
   return s.length ? s : "—";
+}
+
+function normalizeItemName(nameRaw) {
+  let name = String(nameRaw || "").trim().toLowerCase();
+  if (!name) return "";
+
+  const map = {
+    handhelds: "handheld",
+    handheld: "handheld",
+    stands: "stand",
+    stand: "stand",
+    stools: "stool",
+    stool: "stool",
+    chairs: "chair",
+    chair: "chair",
+    "di boxes": "di box",
+    "di box": "di box",
+    guitars: "guitar",
+    guitar: "guitar",
+  };
+  if (map[name]) return map[name];
+
+  if (name.endsWith("s") && name.length > 3) name = name.slice(0, -1);
+  return name;
+}
+
+function parseRequirementValue(value) {
+  const s0 = String(value || "").trim();
+  if (!s0) return {};
+  const s = s0.toLowerCase();
+  if (s === "—" || s === "none" || s === "0" || s === "n/a") return {};
+
+  const parts = s0.split(",").map((p) => p.trim()).filter(Boolean);
+  const counts = {};
+
+  parts.forEach((p) => {
+    const m = p.match(/^(\d+)\s+(.*)$/);
+    let count = 1;
+    let name = p;
+
+    if (m) {
+      count = Number(m[1]);
+      name = m[2];
+    }
+
+    name = normalizeItemName(name);
+    if (!name) return;
+
+    counts[name] = (counts[name] || 0) + (Number.isFinite(count) ? count : 1);
+  });
+
+  return counts;
+}
+
+function diffCounts(fromCounts, toCounts) {
+  const keys = new Set([...Object.keys(fromCounts), ...Object.keys(toCounts)]);
+  const adds = [];
+  const removes = [];
+
+  keys.forEach((k) => {
+    const a = fromCounts[k] || 0;
+    const b = toCounts[k] || 0;
+    const d = b - a;
+    if (d > 0) adds.push({ name: k, count: d });
+    if (d < 0) removes.push({ name: k, count: -d });
+  });
+
+  adds.sort((x, y) => x.name.localeCompare(y.name));
+  removes.sort((x, y) => x.name.localeCompare(y.name));
+
+  return { adds, removes };
+}
+
+function describeChangePills(fromVal, toVal) {
+  const fromCounts = parseRequirementValue(fromVal);
+  const toCounts = parseRequirementValue(toVal);
+  const { adds, removes } = diffCounts(fromCounts, toCounts);
+
+  const pills = [];
+  removes.forEach((r) => pills.push({ type: "remove", text: `-${r.count} ${r.name}` }));
+  adds.forEach((a) => pills.push({ type: "add", text: `+${a.count} ${a.name}` }));
+  return pills;
+}
+
+function renderChangeSummary(containerEl, fromItem, toItem) {
+  if (!containerEl) return;
+
+  const fields = [
+    { key: "mics", label: "Mics" },
+    { key: "chairs", label: "Chairs" },
+    { key: "instruments", label: "Instruments" },
+    { key: "other", label: "Other" },
+  ];
+
+  if (!fromItem || !toItem) {
+    containerEl.innerHTML = `<div class="no-change">—</div>`;
+    return;
+  }
+
+  const lines = [];
+
+  fields.forEach((f) => {
+    const fromVal = getRequirement(fromItem, f.key);
+    const toVal = getRequirement(toItem, f.key);
+
+    const pills = describeChangePills(fromVal, toVal);
+    if (pills.length === 0) return;
+
+    const pillHtml = pills.map((p) => `<span class="pill ${p.type}">${p.text}</span>`).join("");
+    lines.push(`
+      <div class="change-line">
+        <div class="change-label">${f.label}</div>
+        <div class="change-pills">${pillHtml}</div>
+      </div>
+    `);
+  });
+
+  containerEl.innerHTML = lines.length
+    ? lines.join("")
+    : `<div class="no-change">No stage changes.</div>`;
 }
 
 // ==============================
@@ -303,19 +412,9 @@ function computeProjectedTiming(showData, items) {
 // Init / seed show
 // ==============================
 function buildInitialItems() {
-  // BEFORE START:
-  // item-1 = backstage
-  // item-2 = blue (displayed as ON DECK)
-  // rest = queued
   return seedItems.map((item, index) => {
     const status = index === 0 ? "backstage" : index === 1 ? "blue" : "queued";
-    return {
-      ...item,
-      status,
-      actualStartAt: null,
-      actualEndAt: null,
-      notes: "",
-    };
+    return { ...item, status, actualStartAt: null, actualEndAt: null, notes: "" };
   });
 }
 
@@ -323,7 +422,6 @@ async function initShow() {
   const batch = writeBatch(db);
   const now = new Date();
   const initialItems = buildInitialItems();
-
   const totalPlannedSeconds = initialItems.reduce((sum, item) => sum + (item.plannedSeconds || 0), 0);
   const plannedEndBaselineAt = new Date(now.getTime() + totalPlannedSeconds * 1000);
 
@@ -337,10 +435,7 @@ async function initShow() {
     updatedAt: serverTimestamp(),
   });
 
-  initialItems.forEach((item, index) => {
-    batch.set(itemRefByIndex(index), item);
-  });
-
+  initialItems.forEach((item, index) => batch.set(itemRefByIndex(index), item));
   await batch.commit();
 }
 
@@ -350,8 +445,7 @@ async function initShow() {
 async function txGetAllItems(transaction) {
   const items = [];
   for (let i = 0; i < ITEM_COUNT; i++) {
-    const ref = itemRefByIndex(i);
-    const snap = await transaction.get(ref);
+    const snap = await transaction.get(itemRefByIndex(i));
     if (snap.exists()) items.push({ id: snap.id, ...snap.data() });
   }
   items.sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -359,16 +453,9 @@ async function txGetAllItems(transaction) {
 }
 
 // ==============================
-// Queue shift map (LIVE -> BACKSTAGE -> ON DECK)
+// Operator actions (LIVE -> BACKSTAGE -> ON DECK)
 // ==============================
 function buildShiftMap(items, currentId) {
-  // We want:
-  // currentId -> live
-  // next not-done -> backstage
-  // next not-done -> blue (ON DECK)
-  // rest not-done -> queued
-  // done stays done
-
   const byOrder = [...items].sort((a, b) => (a.order || 0) - (b.order || 0));
   const cur = byOrder.find((it) => it.id === currentId);
   if (!cur) return null;
@@ -378,7 +465,6 @@ function buildShiftMap(items, currentId) {
   const nextDeck = notDone[1] || null;
 
   const map = new Map();
-
   byOrder.forEach((it) => {
     if (it.status === "done") map.set(it.id, "done");
     else if (it.id === currentId) map.set(it.id, "live");
@@ -390,9 +476,6 @@ function buildShiftMap(items, currentId) {
   return map;
 }
 
-// ==============================
-// Operator actions
-// ==============================
 async function startCurrentItem() {
   await runTransaction(db, async (transaction) => {
     const showSnap = await transaction.get(showRef);
@@ -405,26 +488,18 @@ async function startCurrentItem() {
     const currentItem = items.find((it) => it.id === currentId);
     if (!currentItem) throw new Error(`Current item not found: ${currentId}`);
 
-    // Build target statuses: LIVE -> BACKSTAGE -> ON DECK
     const target = buildShiftMap(items, currentId);
     if (!target) throw new Error("Could not build queue shift map.");
 
-    // Apply updates
+    const now = new Date();
+
     items.forEach((it) => {
       const desired = target.get(it.id) || it.status;
       const patch = {};
       let changed = false;
 
-      if (it.status !== desired) {
-        patch.status = desired;
-        changed = true;
-      }
-
-      // Start time for the live item
-      if (it.id === currentId && !it.actualStartAt) {
-        patch.actualStartAt = new Date();
-        changed = true;
-      }
+      if (it.status !== desired) { patch.status = desired; changed = true; }
+      if (it.id === currentId && !it.actualStartAt) { patch.actualStartAt = now; changed = true; }
 
       if (changed) transaction.update(doc(itemsRef, it.id), patch);
     });
@@ -432,7 +507,7 @@ async function startCurrentItem() {
     const previewItems = items.map((it) => ({
       ...it,
       status: target.get(it.id) || it.status,
-      actualStartAt: it.id === currentId ? (it.actualStartAt || new Date()) : it.actualStartAt,
+      actualStartAt: it.id === currentId ? (it.actualStartAt || now) : it.actualStartAt,
     }));
 
     const { projectedEndAt, offsetSeconds } = computeProjectedTiming(showData, previewItems);
@@ -460,13 +535,8 @@ async function endCurrentItem() {
 
     if (!liveItem) throw new Error("No LIVE/current item found to end.");
 
-    // Mark live item done
-    transaction.update(doc(itemsRef, liveItem.id), {
-      status: "done",
-      actualEndAt: new Date(),
-    });
+    transaction.update(doc(itemsRef, liveItem.id), { status: "done", actualEndAt: new Date() });
 
-    // Next up: first non-done item after marking this done
     const remaining = items
       .filter((it) => it.id !== liveItem.id)
       .map((it) => (it.status === "done" ? it : { ...it, status: "queued" }))
@@ -476,16 +546,14 @@ async function endCurrentItem() {
     const nextBackstage = notDone[0] || null;
     const nextDeck = notDone[1] || null;
 
-    // Set next statuses
     notDone.forEach((it, idx) => {
       const desired = idx === 0 ? "backstage" : idx === 1 ? "blue" : "queued";
       transaction.update(doc(itemsRef, it.id), { status: desired });
     });
 
-    const nextCurrentId = nextBackstage ? nextBackstage.id : "";
-    const nextShowStatus = nextCurrentId ? (showData.status === "hold" ? "hold" : "running") : "stopped";
+    const nextCurrentId = nextBackstage ? nextBackstage.id : "item-1";
+    const nextShowStatus = nextBackstage ? (showData.status === "hold" ? "hold" : "running") : "stopped";
 
-    // Timing preview items
     const updatedItemsForTiming = [
       { ...liveItem, status: "done" },
       ...remaining.map((it) => {
@@ -500,7 +568,7 @@ async function endCurrentItem() {
 
     transaction.update(showRef, {
       status: nextShowStatus,
-      currentItemId: nextCurrentId || "item-1",
+      currentItemId: nextCurrentId,
       projectedEndAt,
       offsetSeconds,
       updatedAt: serverTimestamp(),
@@ -518,10 +586,7 @@ async function toggleHold(currentStatus, message) {
 }
 
 async function setCurrentItem(itemId) {
-  await updateDoc(showRef, {
-    currentItemId: itemId,
-    updatedAt: serverTimestamp(),
-  });
+  await updateDoc(showRef, { currentItemId: itemId, updatedAt: serverTimestamp() });
 }
 
 async function updatePlannedSeconds(itemId, plannedSeconds) {
@@ -529,172 +594,14 @@ async function updatePlannedSeconds(itemId, plannedSeconds) {
 }
 
 // ==============================
-// Undo (snapshot-based — safe)
+// View logic (Operator only in this update)
 // ==============================
-async function undoSnapshot(snapshot) {
-  if (!snapshot) return;
-
-  const batch = writeBatch(db);
-
-  snapshot.items.forEach((item) => {
-    batch.update(doc(itemsRef, item.id), {
-      status: item.status,
-      actualStartAt: item.actualStartAt || null,
-      actualEndAt: item.actualEndAt || null,
-      plannedSeconds: item.plannedSeconds,
-    });
-  });
-
-  batch.update(showRef, {
-    currentItemId: snapshot.show.currentItemId || "item-1",
-    status: snapshot.show.status || "stopped",
-    holdMessage: snapshot.show.holdMessage || "",
-    updatedAt: serverTimestamp(),
-  });
-
-  await batch.commit();
-}
-
-// ==============================
-// View helpers
-// ==============================
-function getPerformersText(item) {
-  if (!item || !item.performers || !item.performers.length) return "—";
-  return item.performers.join(", ");
-}
-
-function summarizeUpcoming(items, currentId) {
-  const doneItems = items.filter((item) => item.status === "done").slice(-2);
-  const currentItem = items.find((item) => item.id === currentId);
-  const backstage = items.find((item) => item.status === "backstage");
-  const deck = items.find((item) => item.status === "blue");
-  const queued = items.filter((item) => item.status === "queued").slice(0, 4);
-  return [...doneItems, currentItem, backstage, deck, ...queued].filter(Boolean);
-}
-
 function getElapsedSeconds(actualStartAt) {
   const start = normalizeTimestamp(actualStartAt);
   if (!start) return null;
   return Math.floor((Date.now() - start.getTime()) / 1000);
 }
 
-function getProjectedStartTimes(items) {
-  const live = items.find((item) => item.status === "live");
-  const backstage = items.find((item) => item.status === "backstage");
-  const deck = items.find((item) => item.status === "blue");
-
-  const now = Date.now();
-  const liveStart = normalizeTimestamp(live?.actualStartAt);
-  const liveBase = liveStart ? liveStart.getTime() : now;
-  const livePlanned = live?.plannedSeconds || 0;
-
-  const backstageStart = live ? liveBase + livePlanned * 1000 : now;
-  const deckStart = backstageStart + (backstage?.plannedSeconds || 0) * 1000;
-
-  return {
-    backstageEtaSeconds: Math.max(0, Math.floor((backstageStart - now) / 1000)),
-    deckEtaSeconds: Math.max(0, Math.floor((deckStart - now) / 1000)),
-  };
-}
-
-// ==============================
-// OPEN VIEW
-// ==============================
-function initOpenView() {
-  const scheduleStatusEl = document.getElementById("scheduleStatus");
-  if (!scheduleStatusEl) return;
-
-  const projectedEndEl = document.getElementById("projectedEnd");
-  const currentTimeEl = document.getElementById("currentTime");
-  const showStatusEl = document.getElementById("showStatus");
-  const holdBarEl = document.getElementById("holdBar");
-  const upcomingListEl = document.getElementById("upcomingList");
-
-  const liveTitleEl = document.getElementById("liveTitle");
-  const livePerformersEl = document.getElementById("livePerformers");
-
-  const backstageTitleEl = document.getElementById("backstageTitle");
-  const backstagePerformersEl = document.getElementById("backstagePerformers");
-  const backstageTimerEl = document.getElementById("backstageTimer");
-
-  const deckTitleEl = document.getElementById("blueTitle");
-  const deckPerformersEl = document.getElementById("bluePerformers");
-  const deckTimerEl = document.getElementById("blueTimer");
-
-  let showData = null;
-  let items = [];
-
-  function updateClock() {
-    currentTimeEl.textContent = formatClock(new Date());
-    if (!items.length) return;
-    const { backstageEtaSeconds, deckEtaSeconds } = getProjectedStartTimes(items);
-    backstageTimerEl.textContent = `GO TO STAGE IN: ${formatDuration(backstageEtaSeconds)}`;
-    deckTimerEl.textContent = `GET READY IN: ${formatDuration(deckEtaSeconds)}`;
-  }
-
-  subscribeShow((data) => {
-    showData = data;
-    if (!data) return;
-
-    const offset = data.offsetSeconds;
-    const label = getStatusLabel(offset);
-    scheduleStatusEl.textContent = label === "ON TIME" ? "ON TIME" : `${label} ${formatOffset(offset)}`;
-    applyScheduleSignal(scheduleStatusEl, offset);
-
-    projectedEndEl.textContent = formatClock(data.projectedEndAt?.toDate?.() || data.projectedEndAt);
-
-    showStatusEl.textContent = data.status ? data.status.toUpperCase() : "—";
-    applyShowStatusChip(showStatusEl, data.status);
-
-    if (data.status === "hold") {
-      holdBarEl.style.display = "block";
-      holdBarEl.textContent = data.holdMessage || "HOLD";
-    } else {
-      holdBarEl.style.display = "none";
-    }
-  });
-
-  subscribeItems((list) => {
-    items = list;
-
-    const liveItem = items.find((i) => i.status === "live") || null;
-    const backstageItem = items.find((i) => i.status === "backstage") || null;
-    const deckItem = items.find((i) => i.status === "blue") || null;
-
-    liveTitleEl.textContent = liveItem?.title || "—";
-    livePerformersEl.textContent = getPerformersText(liveItem);
-
-    backstageTitleEl.textContent = backstageItem?.title || "—";
-    backstagePerformersEl.textContent = getPerformersText(backstageItem);
-
-    deckTitleEl.textContent = deckItem?.title || "—";
-    deckPerformersEl.textContent = getPerformersText(deckItem);
-
-    upcomingListEl.innerHTML = "";
-    summarizeUpcoming(items, showData?.currentItemId).forEach((item) => {
-      const status = String(item.status || "queued").toLowerCase();
-      const row = document.createElement("div");
-      row.className = `list-item status-${status}`;
-      row.innerHTML = `
-        <div>
-          <div>${item.title}</div>
-          <div class="meta">${item.type || ""}</div>
-        </div>
-        <div class="status-wrap">
-          <span class="tag ${status}">${displayStatus(status)}</span>
-        </div>
-      `;
-      upcomingListEl.appendChild(row);
-    });
-  });
-
-  setInterval(updateClock, 1000);
-  updateClock();
-}
-
-// ==============================
-// OPERATOR VIEW
-// ==============================
 function initOperatorView() {
   const operatorTimeEl = document.getElementById("operatorTime");
   if (!operatorTimeEl) return;
@@ -717,7 +624,6 @@ function initOperatorView() {
   const deckTitleEl = document.getElementById("blueTitle");
   const deckPlannedEl = document.getElementById("bluePlanned");
 
-  // Stage Requirements panel (operator only)
   const reqNowTitleEl = document.getElementById("reqNowTitle");
   const reqNowMicsEl = document.getElementById("reqNowMics");
   const reqNowChairsEl = document.getElementById("reqNowChairs");
@@ -729,12 +635,14 @@ function initOperatorView() {
   const reqBackChairsEl = document.getElementById("reqBackChairs");
   const reqBackInstrumentsEl = document.getElementById("reqBackInstruments");
   const reqBackOtherEl = document.getElementById("reqBackOther");
+  const reqBackChangeEl = document.getElementById("reqBackChange");
 
   const reqDeckTitleEl = document.getElementById("reqDeckTitle");
   const reqDeckMicsEl = document.getElementById("reqDeckMics");
   const reqDeckChairsEl = document.getElementById("reqDeckChairs");
   const reqDeckInstrumentsEl = document.getElementById("reqDeckInstruments");
   const reqDeckOtherEl = document.getElementById("reqDeckOther");
+  const reqDeckChangeEl = document.getElementById("reqDeckChange");
 
   const startBtn = document.getElementById("startBtn");
   const endBtn = document.getElementById("endBtn");
@@ -765,6 +673,29 @@ function initOperatorView() {
         plannedSeconds: it.plannedSeconds || 0,
       })),
     };
+  }
+
+  async function undoSnapshot(snapshot) {
+    if (!snapshot) return;
+    const batch = writeBatch(db);
+
+    snapshot.items.forEach((item) => {
+      batch.update(doc(itemsRef, item.id), {
+        status: item.status,
+        actualStartAt: item.actualStartAt || null,
+        actualEndAt: item.actualEndAt || null,
+        plannedSeconds: item.plannedSeconds,
+      });
+    });
+
+    batch.update(showRef, {
+      currentItemId: snapshot.show.currentItemId || "item-1",
+      status: snapshot.show.status || "stopped",
+      holdMessage: snapshot.show.holdMessage || "",
+      updatedAt: serverTimestamp(),
+    });
+
+    await batch.commit();
   }
 
   function renderRunTable() {
@@ -798,23 +729,23 @@ function initOperatorView() {
     operatorProjectedEndEl.textContent = formatClock(showData.projectedEndAt?.toDate?.() || showData.projectedEndAt);
 
     operatorOffsetEl.textContent =
-      showData.offsetSeconds == null ? "—" : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`;
+      showData.offsetSeconds == null
+        ? "—"
+        : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`;
     applyOffsetSignal(operatorOffsetEl, showData.offsetSeconds);
 
     const statusText = showData.status?.toUpperCase() || "—";
     operatorShowStatusEl.textContent = statusText;
-    applyShowStatusSignal(operatorShowStatusEl, showData.status);
+
     if (operatorHeaderStatusEl) {
       operatorHeaderStatusEl.textContent = statusText;
       applyShowStatusChip(operatorHeaderStatusEl, showData.status);
     }
 
-    const currentItem =
-      items.find((item) => item.status === "live") ||
-      items.find((item) => item.id === showData.currentItemId);
-
-    const backstageItem = items.find((item) => item.status === "backstage");
-    const deckItem = items.find((item) => item.status === "blue");
+    const liveItem = items.find((it) => it.status === "live");
+    const currentItem = liveItem || items.find((it) => it.id === showData.currentItemId);
+    const backstageItem = items.find((it) => it.status === "backstage");
+    const deckItem = items.find((it) => it.status === "blue");
 
     currentTitleEl.textContent = currentItem?.title || "—";
     currentTypeEl.textContent = currentItem?.type || "—";
@@ -828,29 +759,37 @@ function initOperatorView() {
     deckTitleEl.textContent = deckItem?.title || "—";
     deckPlannedEl.textContent = deckItem?.plannedSeconds ? formatDuration(deckItem.plannedSeconds) : "—";
 
-    // Stage Requirements (safe even if panel missing)
-    if (reqNowTitleEl) reqNowTitleEl.textContent = currentItem?.title || "—";
-    if (reqNowMicsEl) reqNowMicsEl.textContent = getRequirement(currentItem, "mics");
-    if (reqNowChairsEl) reqNowChairsEl.textContent = getRequirement(currentItem, "chairs");
-    if (reqNowInstrumentsEl) reqNowInstrumentsEl.textContent = getRequirement(currentItem, "instruments");
-    if (reqNowOtherEl) reqNowOtherEl.textContent = getRequirement(currentItem, "other");
+    // Requirements values
+    reqNowTitleEl.textContent = currentItem?.title || "—";
+    reqNowMicsEl.textContent = getRequirement(currentItem, "mics");
+    reqNowChairsEl.textContent = getRequirement(currentItem, "chairs");
+    reqNowInstrumentsEl.textContent = getRequirement(currentItem, "instruments");
+    reqNowOtherEl.textContent = getRequirement(currentItem, "other");
 
-    if (reqBackTitleEl) reqBackTitleEl.textContent = backstageItem?.title || "—";
-    if (reqBackMicsEl) reqBackMicsEl.textContent = getRequirement(backstageItem, "mics");
-    if (reqBackChairsEl) reqBackChairsEl.textContent = getRequirement(backstageItem, "chairs");
-    if (reqBackInstrumentsEl) reqBackInstrumentsEl.textContent = getRequirement(backstageItem, "instruments");
-    if (reqBackOtherEl) reqBackOtherEl.textContent = getRequirement(backstageItem, "other");
+    reqBackTitleEl.textContent = backstageItem?.title || "—";
+    reqBackMicsEl.textContent = getRequirement(backstageItem, "mics");
+    reqBackChairsEl.textContent = getRequirement(backstageItem, "chairs");
+    reqBackInstrumentsEl.textContent = getRequirement(backstageItem, "instruments");
+    reqBackOtherEl.textContent = getRequirement(backstageItem, "other");
 
-    if (reqDeckTitleEl) reqDeckTitleEl.textContent = deckItem?.title || "—";
-    if (reqDeckMicsEl) reqDeckMicsEl.textContent = getRequirement(deckItem, "mics");
-    if (reqDeckChairsEl) reqDeckChairsEl.textContent = getRequirement(deckItem, "chairs");
-    if (reqDeckInstrumentsEl) reqDeckInstrumentsEl.textContent = getRequirement(deckItem, "instruments");
-    if (reqDeckOtherEl) reqDeckOtherEl.textContent = getRequirement(deckItem, "other");
+    reqDeckTitleEl.textContent = deckItem?.title || "—";
+    reqDeckMicsEl.textContent = getRequirement(deckItem, "mics");
+    reqDeckChairsEl.textContent = getRequirement(deckItem, "chairs");
+    reqDeckInstrumentsEl.textContent = getRequirement(deckItem, "instruments");
+    reqDeckOtherEl.textContent = getRequirement(deckItem, "other");
+
+    // Change summaries
+    renderChangeSummary(reqBackChangeEl, currentItem, backstageItem);
+    renderChangeSummary(reqDeckChangeEl, backstageItem, deckItem);
   }
 
   function updateClock() {
     operatorTimeEl.textContent = formatClock(new Date());
-    const currentItem = items.find((it) => it.status === "live") || items.find((it) => it.id === showData?.currentItemId);
+
+    const currentItem =
+      items.find((it) => it.status === "live") ||
+      items.find((it) => it.id === showData?.currentItemId);
+
     const elapsed = getElapsedSeconds(currentItem?.actualStartAt);
     currentElapsedEl.textContent = elapsed == null ? "—" : formatDuration(elapsed);
 
@@ -866,67 +805,22 @@ function initOperatorView() {
     }
   }
 
-  subscribeShow((data) => {
-    showData = data;
-    renderShow();
-  });
-
-  subscribeItems((list) => {
-    items = list;
-    renderShow();
-    renderRunTable();
-  });
-
-  async function safeRun(fn) {
-    try {
-      await fn();
-    } catch (e) {
+  function safeRun(fn) {
+    return fn().catch((e) => {
       console.error(e);
       alert(e?.message || String(e));
-    }
+    });
   }
 
-  startBtn?.addEventListener("click", () =>
-    safeRun(async () => {
-      lastSnapshot = snapshotState();
-      await startCurrentItem();
-    })
-  );
-
-  endBtn?.addEventListener("click", () =>
-    safeRun(async () => {
-      lastSnapshot = snapshotState();
-      await endCurrentItem();
-    })
-  );
-
-  undoBtn?.addEventListener("click", () =>
-    safeRun(async () => {
-      if (!lastSnapshot) return;
-      await undoSnapshot(lastSnapshot);
-      lastSnapshot = null;
-    })
-  );
-
-  holdBtn?.addEventListener("click", () =>
-    safeRun(async () => {
-      const message = prompt("Hold message", showData?.holdMessage || "HOLD");
-      await toggleHold(showData?.status, message);
-    })
-  );
-
-  initBtn?.addEventListener("click", () =>
-    safeRun(async () => {
-      if (!confirm("Reset the show? This will overwrite all data.")) return;
-      await initShow();
-    })
-  );
+  startBtn?.addEventListener("click", () => safeRun(async () => { lastSnapshot = snapshotState(); await startCurrentItem(); }));
+  endBtn?.addEventListener("click", () => safeRun(async () => { lastSnapshot = snapshotState(); await endCurrentItem(); }));
+  undoBtn?.addEventListener("click", () => safeRun(async () => { if (!lastSnapshot) return; await undoSnapshot(lastSnapshot); lastSnapshot = null; }));
+  holdBtn?.addEventListener("click", () => safeRun(async () => { const message = prompt("Hold message", showData?.holdMessage || "HOLD"); await toggleHold(showData?.status, message); }));
+  initBtn?.addEventListener("click", () => safeRun(async () => { if (!confirm("Reset the show? This will overwrite all data.")) return; await initShow(); }));
 
   advancedToggle?.addEventListener("change", () => {
     const isEnabled = advancedToggle.checked;
-    document.querySelectorAll(".advanced").forEach((cell) => {
-      cell.style.display = isEnabled ? "table-cell" : "none";
-    });
+    document.querySelectorAll(".advanced").forEach((cell) => (cell.style.display = isEnabled ? "table-cell" : "none"));
     if (advancedHeader) advancedHeader.style.display = isEnabled ? "table-cell" : "none";
   });
 
@@ -946,14 +840,14 @@ function initOperatorView() {
     });
   });
 
+  subscribeShow((data) => { showData = data; renderShow(); renderRunTable(); });
+  subscribeItems((list) => { items = list; renderShow(); renderRunTable(); });
+
   setInterval(updateClock, 1000);
   updateClock();
 }
 
-// ==============================
 // Boot
-// ==============================
 document.addEventListener("DOMContentLoaded", () => {
-  initOpenView();
   initOperatorView();
 });

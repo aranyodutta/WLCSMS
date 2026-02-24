@@ -986,3 +986,111 @@ input[type="number"]:focus {
     min-height: auto;
   }
 }
+/* === YOUR EXISTING style.css CONTENT SHOULD BE HERE ===
+   (Keep everything you already have)
+   THEN add the block below at the VERY END of the file.
+*/
+
+/* ==============================
+   Dynamic signal colors (JS adds these classes)
+============================== */
+.signal-success { color: var(--success) !important; }
+.signal-danger  { color: var(--danger) !important; }
+.signal-warn    { color: var(--warn) !important; }
+.signal-info    { color: var(--accent) !important; }
+.signal-muted   { color: var(--muted) !important; }
+
+/* Status chip tones (JS adds chip-* classes) */
+.status-chip.chip-running {
+  background: rgba(53, 215, 138, 0.16) !important;
+  border: 1px solid rgba(53, 215, 138, 0.32) !important;
+  color: #9af0c6 !important;
+}
+.status-chip.chip-hold {
+  background: rgba(255, 177, 76, 0.16) !important;
+  border: 1px solid rgba(255, 177, 76, 0.32) !important;
+  color: #ffd9a6 !important;
+}
+.status-chip.chip-stopped {
+  background: rgba(170, 182, 204, 0.14) !important;
+  border: 1px solid rgba(170, 182, 204, 0.22) !important;
+  color: #cad3e3 !important;
+}
+
+/* ==============================
+   Stage Requirements panel (Operator)
+============================== */
+.stage-req .req-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.req-card {
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid rgba(16, 24, 40, 0.08);
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.operator .req-card {
+  background: linear-gradient(180deg, #ffffff, #fcfdff);
+  border: 1px solid rgba(16, 24, 40, 0.07);
+}
+
+.req-kicker {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.req-title {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.operator .req-title { color: #0f172a; }
+
+.req-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.req-row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(16, 24, 40, 0.06);
+}
+
+.req-label {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.req-value {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.operator .req-value { color: #0f172a; }
+
+@media (max-width: 1100px) {
+  .stage-req .req-grid {
+    grid-template-columns: 1fr;
+  }
+}

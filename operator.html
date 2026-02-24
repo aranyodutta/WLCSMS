@@ -65,15 +65,45 @@
       </section>
     </div>
 
-    <section class="panel materials-panel">
-      <div class="materials-panel-header">
-        <h2>Stage Requirements</h2>
+    <section class="panel stage-req" style="margin-top:16px;">
+      <div class="flex" style="justify-content:space-between; align-items:flex-end;">
+        <h2 style="margin:0;">Stage Requirements</h2>
         <div class="small">Current + next transitions (mics, chairs, instruments, other)</div>
       </div>
-      <div class="materials-grid">
-        <div class="materials-card" id="reqCurrent"></div>
-        <div class="materials-card" id="reqBackstage"></div>
-        <div class="materials-card" id="reqOnDeck"></div>
+
+      <div class="req-grid" style="margin-top:12px;">
+        <div class="req-card">
+          <div class="req-kicker">ON STAGE (NOW)</div>
+          <div class="req-title" id="reqNowTitle">—</div>
+          <div class="req-rows">
+            <div class="req-row"><div class="req-label">Mics</div><div class="req-value" id="reqNowMics">—</div></div>
+            <div class="req-row"><div class="req-label">Chairs</div><div class="req-value" id="reqNowChairs">—</div></div>
+            <div class="req-row"><div class="req-label">Instruments</div><div class="req-value" id="reqNowInstruments">—</div></div>
+            <div class="req-row"><div class="req-label">Other</div><div class="req-value" id="reqNowOther">—</div></div>
+          </div>
+        </div>
+
+        <div class="req-card">
+          <div class="req-kicker">BACKSTAGE (NEXT)</div>
+          <div class="req-title" id="reqBackTitle">—</div>
+          <div class="req-rows">
+            <div class="req-row"><div class="req-label">Mics</div><div class="req-value" id="reqBackMics">—</div></div>
+            <div class="req-row"><div class="req-label">Chairs</div><div class="req-value" id="reqBackChairs">—</div></div>
+            <div class="req-row"><div class="req-label">Instruments</div><div class="req-value" id="reqBackInstruments">—</div></div>
+            <div class="req-row"><div class="req-label">Other</div><div class="req-value" id="reqBackOther">—</div></div>
+          </div>
+        </div>
+
+        <div class="req-card">
+          <div class="req-kicker">ON DECK</div>
+          <div class="req-title" id="reqDeckTitle">—</div>
+          <div class="req-rows">
+            <div class="req-row"><div class="req-label">Mics</div><div class="req-value" id="reqDeckMics">—</div></div>
+            <div class="req-row"><div class="req-label">Chairs</div><div class="req-value" id="reqDeckChairs">—</div></div>
+            <div class="req-row"><div class="req-label">Instruments</div><div class="req-value" id="reqDeckInstruments">—</div></div>
+            <div class="req-row"><div class="req-label">Other</div><div class="req-value" id="reqDeckOther">—</div></div>
+          </div>
+        </div>
       </div>
     </section>
 

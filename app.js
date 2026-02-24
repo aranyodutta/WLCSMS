@@ -1,5 +1,7 @@
 // ==============================
-// WLCSMS app.js — FULL FILE (queue shift fixed + "ON DECK")
+// WLCSMS app.js — FULL FILE
+// Adds: Stage Requirements panel wiring + restores "ahead/behind" + status colors
+// Keeps: queue shift logic + ON DECK naming + existing operator/open rendering
 // ==============================
 
 // ==============================
@@ -37,17 +39,94 @@ const db = getFirestore(app);
 const SHOW_ID = "main";
 
 const seedItems = [
-  { order: 1, title: "Opening Welcome", type: "NARRATION", performers: ["Student MCs"], plannedSeconds: 180 },
-  { order: 2, title: "Sunrise Beats", type: "ACT", performers: ["Jazz Ensemble"], plannedSeconds: 240 },
-  { order: 3, title: "Spotlight Solo", type: "ACT", performers: ["Maya R."], plannedSeconds: 210 },
-  { order: 4, title: "Community Announcements", type: "NARRATION", performers: ["Student Council"], plannedSeconds: 120 },
-  { order: 5, title: "Dance Crew Showcase", type: "ACT", performers: ["Momentum Crew"], plannedSeconds: 300 },
-  { order: 6, title: "Intermission", type: "INTERMISSION", performers: [], plannedSeconds: 600 },
-  { order: 7, title: "Acoustic Duet", type: "ACT", performers: ["Noah & Priya"], plannedSeconds: 240 },
-  { order: 8, title: "Comedy Spotlight", type: "ACT", performers: ["Jordan L."], plannedSeconds: 180 },
-  { order: 9, title: "Senior Tribute", type: "NARRATION", performers: ["Senior Class"], plannedSeconds: 180 },
-  { order: 10, title: "Finale Medley", type: "ACT", performers: ["All Performers"], plannedSeconds: 360 },
-  { order: 11, title: "Closing Thanks", type: "NARRATION", performers: ["Student MCs"], plannedSeconds: 150 },
+  {
+    order: 1,
+    title: "Opening Welcome",
+    type: "NARRATION",
+    performers: ["Student MCs"],
+    plannedSeconds: 180,
+    requirements: { mics: "2 handheld, 1 stand", chairs: "0", instruments: "None", other: "None" },
+  },
+  {
+    order: 2,
+    title: "Sunrise Beats",
+    type: "ACT",
+    performers: ["Jazz Ensemble"],
+    plannedSeconds: 240,
+    requirements: { mics: "2 handheld, 1 stand", chairs: "2", instruments: "Piano", other: "None" },
+  },
+  {
+    order: 3,
+    title: "Spotlight Solo",
+    type: "ACT",
+    performers: ["Maya R."],
+    plannedSeconds: 210,
+    requirements: { mics: "1 handheld", chairs: "0", instruments: "None", other: "None" },
+  },
+  {
+    order: 4,
+    title: "Community Announcements",
+    type: "NARRATION",
+    performers: ["Student Council"],
+    plannedSeconds: 120,
+    requirements: { mics: "2 handheld", chairs: "0", instruments: "None", other: "None" },
+  },
+  {
+    order: 5,
+    title: "Dance Crew Showcase",
+    type: "ACT",
+    performers: ["Momentum Crew"],
+    plannedSeconds: 300,
+    requirements: { mics: "None", chairs: "0", instruments: "None", other: "Open stage" },
+  },
+  {
+    order: 6,
+    title: "Intermission",
+    type: "INTERMISSION",
+    performers: [],
+    plannedSeconds: 600,
+    requirements: { mics: "None", chairs: "0", instruments: "None", other: "House music" },
+  },
+  {
+    order: 7,
+    title: "Acoustic Duet",
+    type: "ACT",
+    performers: ["Noah & Priya"],
+    plannedSeconds: 240,
+    requirements: { mics: "2 handheld", chairs: "2 stools", instruments: "2 guitars", other: "2 DI boxes" },
+  },
+  {
+    order: 8,
+    title: "Comedy Spotlight",
+    type: "ACT",
+    performers: ["Jordan L."],
+    plannedSeconds: 180,
+    requirements: { mics: "1 handheld", chairs: "1 stool", instruments: "None", other: "None" },
+  },
+  {
+    order: 9,
+    title: "Senior Tribute",
+    type: "NARRATION",
+    performers: ["Senior Class"],
+    plannedSeconds: 180,
+    requirements: { mics: "3 handheld", chairs: "0", instruments: "None", other: "None" },
+  },
+  {
+    order: 10,
+    title: "Finale Medley",
+    type: "ACT",
+    performers: ["All Performers"],
+    plannedSeconds: 360,
+    requirements: { mics: "2 handheld", chairs: "0", instruments: "None", other: "Open stage" },
+  },
+  {
+    order: 11,
+    title: "Closing Thanks",
+    type: "NARRATION",
+    performers: ["Student MCs"],
+    plannedSeconds: 150,
+    requirements: { mics: "2 handheld", chairs: "0", instruments: "None", other: "None" },
+  },
 ];
 
 const ITEM_COUNT = seedItems.length;
@@ -56,7 +135,7 @@ const showRef = doc(db, "shows", SHOW_ID);
 const itemsRef = collection(showRef, "items");
 
 function itemIdForIndex(i) {
-  return `item-${i + 1}`;
+  return `item-${i + 1}`; // i is 0-based
 }
 function itemRefByIndex(i) {
   return doc(itemsRef, itemIdForIndex(i));
@@ -123,95 +202,86 @@ function displayStatus(status) {
   return s ? s.toUpperCase() : "—";
 }
 
-const DEFAULT_STAGE_NEEDS = Object.freeze({
-  mics: "—",
-  chairs: "—",
-  instruments: "—",
-  other: "—",
-});
+// ==============================
+// Signal / color helpers (restores "ahead/behind" & status colors)
+// ==============================
+const SIGNAL_CLASSES = ["signal-success", "signal-danger", "signal-warn", "signal-info", "signal-muted"];
+const CHIP_CLASSES = ["chip-running", "chip-hold", "chip-stopped"];
 
-const DEMO_STAGE_NEEDS_BY_TITLE = {
-  "Opening Welcome": { mics: "1 handheld", chairs: "0", instruments: "None", other: "Podium optional" },
-  "Sunrise Beats": { mics: "2 handheld, 1 stand", chairs: "2", instruments: "Piano", other: "Piano bench" },
-  "Spotlight Solo": { mics: "1 handheld", chairs: "1", instruments: "None", other: "Music stand (optional)" },
-  "Community Announcements": { mics: "2 handheld", chairs: "0", instruments: "None", other: "Clipboards" },
-  "Dance Crew Showcase": { mics: "0", chairs: "0", instruments: "None", other: "Center stage clear" },
-  "Intermission": { mics: "0", chairs: "0", instruments: "None", other: "Reset stage" },
-  "Acoustic Duet": { mics: "2 handheld, 1 stand", chairs: "2", instruments: "Guitar", other: "DI box / cable" },
-  "Comedy Spotlight": { mics: "1 handheld", chairs: "1", instruments: "None", other: "Stool" },
-  "Choir Harmony": { mics: "4 stand", chairs: "0", instruments: "Keyboard", other: "Risers (if available)" },
-  "Senior Speech": { mics: "1 handheld", chairs: "0", instruments: "None", other: "Podium" },
-  "Finale": { mics: "4 handheld", chairs: "0", instruments: "None", other: "All performers on deck" },
-};
+function clearSignalClasses(el) {
+  if (!el) return;
+  SIGNAL_CLASSES.forEach((c) => el.classList.remove(c));
+}
 
-function getStageNeeds(item) {
-  const source = item?.stageNeeds || DEMO_STAGE_NEEDS_BY_TITLE[item?.title] || DEFAULT_STAGE_NEEDS;
-  return {
-    mics: source?.mics || "—",
-    chairs: source?.chairs || "—",
-    instruments: source?.instruments || "—",
-    other: source?.other || "—",
+function applySignal(el, tone) {
+  if (!el) return;
+  clearSignalClasses(el);
+  const map = {
+    success: "signal-success",
+    danger: "signal-danger",
+    warn: "signal-warn",
+    info: "signal-info",
+    muted: "signal-muted",
   };
+  el.classList.add(map[tone] || "signal-info");
 }
 
-function getOffsetToneClass(offsetSeconds) {
-  if (offsetSeconds == null || Number.isNaN(offsetSeconds)) return "is-on-time";
-  if (Math.abs(offsetSeconds) <= 10) return "is-on-time";
-  return offsetSeconds > 0 ? "is-behind" : "is-ahead";
+function applyScheduleSignal(el, offsetSeconds) {
+  const label = getStatusLabel(offsetSeconds);
+  if (label === "AHEAD") return applySignal(el, "success");
+  if (label === "BEHIND") return applySignal(el, "danger");
+  return applySignal(el, "info");
 }
 
-function applyOffsetTone(el, offsetSeconds) {
+function applyOffsetSignal(el, offsetSeconds) {
+  if (offsetSeconds == null || Number.isNaN(offsetSeconds)) return applySignal(el, "muted");
+  if (Math.abs(offsetSeconds) <= 10) return applySignal(el, "info");
+  return applySignal(el, offsetSeconds > 0 ? "danger" : "success");
+}
+
+function applyOverUnderSignal(el, diffSeconds) {
+  if (diffSeconds == null || Number.isNaN(diffSeconds)) return applySignal(el, "muted");
+  if (Math.abs(diffSeconds) <= 10) return applySignal(el, "info");
+  return applySignal(el, diffSeconds > 0 ? "danger" : "success");
+}
+
+function clearChipClasses(el) {
   if (!el) return;
-  el.classList.remove("is-ahead", "is-behind", "is-on-time");
-  el.classList.add(getOffsetToneClass(offsetSeconds));
+  CHIP_CLASSES.forEach((c) => el.classList.remove(c));
 }
 
-function getShowStatusClass(status) {
+function applyShowStatusChip(el, status) {
+  if (!el) return;
+  clearChipClasses(el);
   const s = String(status || "").toLowerCase();
-  if (s === "running") return "status-running";
-  if (s === "hold") return "status-hold";
-  return "status-idle";
+  if (s === "running") el.classList.add("chip-running");
+  else if (s === "hold") el.classList.add("chip-hold");
+  else el.classList.add("chip-stopped");
 }
 
-function applyShowStatusTone(el, status) {
-  if (!el) return;
-  el.classList.remove("status-running", "status-hold", "status-idle");
-  el.classList.add(getShowStatusClass(status));
+function applyShowStatusSignal(el, status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "running") return applySignal(el, "success");
+  if (s === "hold") return applySignal(el, "warn");
+  if (s === "stopped") return applySignal(el, "muted");
+  return applySignal(el, "info");
 }
 
-function escapeHtml(value) {
-  return String(value ?? "—")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+// ==============================
+// Requirements helper
+// ==============================
+function getRequirement(item, key) {
+  const req = item?.requirements;
+  if (!req) return "—";
+  const val = req[key];
+  if (val == null) return "—";
+  const s = String(val).trim();
+  return s.length ? s : "—";
 }
 
-function requirementsCardHtml(label, item) {
-  const needs = getStageNeeds(item);
-  const title = item?.title || "—";
-  const type = item?.type ? displayType(item.type) : "—";
-  return `
-    <div class="materials-slot-head">
-      <div class="materials-slot-label">${escapeHtml(label)}</div>
-      <div class="materials-slot-title">${escapeHtml(title)}</div>
-      <div class="materials-slot-type">${escapeHtml(type)}</div>
-    </div>
-    <div class="materials-kv">
-      <div class="materials-kv-row"><span>Mics</span><strong>${escapeHtml(needs.mics)}</strong></div>
-      <div class="materials-kv-row"><span>Chairs</span><strong>${escapeHtml(needs.chairs)}</strong></div>
-      <div class="materials-kv-row"><span>Instruments</span><strong>${escapeHtml(needs.instruments)}</strong></div>
-      <div class="materials-kv-row"><span>Other</span><strong>${escapeHtml(needs.other)}</strong></div>
-    </div>
-  `;
-}
-
-function renderRequirementsCard(container, label, item) {
-  if (!container) return;
-  container.innerHTML = requirementsCardHtml(label, item);
-}
-
+// ==============================
+// Projected timing
+// ==============================
 function computeRemainingSeconds(items) {
   return items
     .filter((item) => item.status !== "done")
@@ -253,6 +323,7 @@ async function initShow() {
   const batch = writeBatch(db);
   const now = new Date();
   const initialItems = buildInitialItems();
+
   const totalPlannedSeconds = initialItems.reduce((sum, item) => sum + (item.plannedSeconds || 0), 0);
   const plannedEndBaselineAt = new Date(now.getTime() + totalPlannedSeconds * 1000);
 
@@ -288,32 +359,33 @@ async function txGetAllItems(transaction) {
 }
 
 // ==============================
-// Core rule: LIVE -> BACKSTAGE -> ON DECK
-// This function builds the exact target status map.
+// Queue shift map (LIVE -> BACKSTAGE -> ON DECK)
 // ==============================
-function buildShiftMap(items, liveId) {
-  const idx = items.findIndex((it) => it.id === liveId);
-  if (idx < 0) return null;
+function buildShiftMap(items, currentId) {
+  // We want:
+  // currentId -> live
+  // next not-done -> backstage
+  // next not-done -> blue (ON DECK)
+  // rest not-done -> queued
+  // done stays done
 
-  // all non-done items in order
-  const notDone = items.filter((it) => it.status !== "done");
+  const byOrder = [...items].sort((a, b) => (a.order || 0) - (b.order || 0));
+  const cur = byOrder.find((it) => it.id === currentId);
+  if (!cur) return null;
 
-  // find the liveId inside notDone order
-  const ndIdx = notDone.findIndex((it) => it.id === liveId);
-  if (ndIdx < 0) return null;
-
-  const nextBackstage = notDone[ndIdx + 1] || null;
-  const nextDeck = notDone[ndIdx + 2] || null;
+  const notDone = byOrder.filter((it) => it.status !== "done" && it.id !== currentId);
+  const nextBackstage = notDone[0] || null;
+  const nextDeck = notDone[1] || null;
 
   const map = new Map();
-  items.forEach((it) => {
+
+  byOrder.forEach((it) => {
     if (it.status === "done") map.set(it.id, "done");
+    else if (it.id === currentId) map.set(it.id, "live");
+    else if (nextBackstage && it.id === nextBackstage.id) map.set(it.id, "backstage");
+    else if (nextDeck && it.id === nextDeck.id) map.set(it.id, "blue");
     else map.set(it.id, "queued");
   });
-
-  map.set(liveId, "live");
-  if (nextBackstage) map.set(nextBackstage.id, "backstage");
-  if (nextDeck) map.set(nextDeck.id, "blue"); // internal is still "blue", displayed as ON DECK
 
   return map;
 }
@@ -325,8 +397,8 @@ async function startCurrentItem() {
   await runTransaction(db, async (transaction) => {
     const showSnap = await transaction.get(showRef);
     if (!showSnap.exists()) throw new Error("Show not initialized. Click Init Show / Reset first.");
-    const showData = showSnap.data();
 
+    const showData = showSnap.data();
     const items = await txGetAllItems(transaction);
 
     const currentId = showData.currentItemId;
@@ -509,6 +581,7 @@ function getElapsedSeconds(actualStartAt) {
 function getProjectedStartTimes(items) {
   const live = items.find((item) => item.status === "live");
   const backstage = items.find((item) => item.status === "backstage");
+  const deck = items.find((item) => item.status === "blue");
 
   const now = Date.now();
   const liveStart = normalizeTimestamp(live?.actualStartAt);
@@ -566,12 +639,12 @@ function initOpenView() {
     const offset = data.offsetSeconds;
     const label = getStatusLabel(offset);
     scheduleStatusEl.textContent = label === "ON TIME" ? "ON TIME" : `${label} ${formatOffset(offset)}`;
-    applyOffsetTone(scheduleStatusEl, offset);
+    applyScheduleSignal(scheduleStatusEl, offset);
 
     projectedEndEl.textContent = formatClock(data.projectedEndAt?.toDate?.() || data.projectedEndAt);
 
     showStatusEl.textContent = data.status ? data.status.toUpperCase() : "—";
-    applyShowStatusTone(showStatusEl, data.status);
+    applyShowStatusChip(showStatusEl, data.status);
 
     if (data.status === "hold") {
       holdBarEl.style.display = "block";
@@ -597,7 +670,6 @@ function initOpenView() {
     deckTitleEl.textContent = deckItem?.title || "—";
     deckPerformersEl.textContent = getPerformersText(deckItem);
 
-    // Upcoming list with pills + row accents (your CSS already styles this)
     upcomingListEl.innerHTML = "";
     summarizeUpcoming(items, showData?.currentItemId).forEach((item) => {
       const status = String(item.status || "queued").toLowerCase();
@@ -645,6 +717,25 @@ function initOperatorView() {
   const deckTitleEl = document.getElementById("blueTitle");
   const deckPlannedEl = document.getElementById("bluePlanned");
 
+  // Stage Requirements panel (operator only)
+  const reqNowTitleEl = document.getElementById("reqNowTitle");
+  const reqNowMicsEl = document.getElementById("reqNowMics");
+  const reqNowChairsEl = document.getElementById("reqNowChairs");
+  const reqNowInstrumentsEl = document.getElementById("reqNowInstruments");
+  const reqNowOtherEl = document.getElementById("reqNowOther");
+
+  const reqBackTitleEl = document.getElementById("reqBackTitle");
+  const reqBackMicsEl = document.getElementById("reqBackMics");
+  const reqBackChairsEl = document.getElementById("reqBackChairs");
+  const reqBackInstrumentsEl = document.getElementById("reqBackInstruments");
+  const reqBackOtherEl = document.getElementById("reqBackOther");
+
+  const reqDeckTitleEl = document.getElementById("reqDeckTitle");
+  const reqDeckMicsEl = document.getElementById("reqDeckMics");
+  const reqDeckChairsEl = document.getElementById("reqDeckChairs");
+  const reqDeckInstrumentsEl = document.getElementById("reqDeckInstruments");
+  const reqDeckOtherEl = document.getElementById("reqDeckOther");
+
   const startBtn = document.getElementById("startBtn");
   const endBtn = document.getElementById("endBtn");
   const undoBtn = document.getElementById("undoBtn");
@@ -654,9 +745,6 @@ function initOperatorView() {
   const runTableBody = document.querySelector("#runTable tbody");
   const advancedToggle = document.getElementById("advancedToggle");
   const advancedHeader = document.getElementById("advancedHeader");
-  const reqCurrentEl = document.getElementById("reqCurrent");
-  const reqBackstageEl = document.getElementById("reqBackstage");
-  const reqOnDeckEl = document.getElementById("reqOnDeck");
 
   let showData = null;
   let items = [];
@@ -711,14 +799,14 @@ function initOperatorView() {
 
     operatorOffsetEl.textContent =
       showData.offsetSeconds == null ? "—" : `${showData.offsetSeconds > 0 ? "+" : ""}${formatOffset(showData.offsetSeconds)}`;
-    applyOffsetTone(operatorOffsetEl, showData.offsetSeconds);
+    applyOffsetSignal(operatorOffsetEl, showData.offsetSeconds);
 
     const statusText = showData.status?.toUpperCase() || "—";
     operatorShowStatusEl.textContent = statusText;
-    applyShowStatusTone(operatorShowStatusEl, showData.status);
+    applyShowStatusSignal(operatorShowStatusEl, showData.status);
     if (operatorHeaderStatusEl) {
       operatorHeaderStatusEl.textContent = statusText;
-      applyShowStatusTone(operatorHeaderStatusEl, showData.status);
+      applyShowStatusChip(operatorHeaderStatusEl, showData.status);
     }
 
     const currentItem =
@@ -740,9 +828,24 @@ function initOperatorView() {
     deckTitleEl.textContent = deckItem?.title || "—";
     deckPlannedEl.textContent = deckItem?.plannedSeconds ? formatDuration(deckItem.plannedSeconds) : "—";
 
-    renderRequirementsCard(reqCurrentEl, "On Stage (Now)", currentItem);
-    renderRequirementsCard(reqBackstageEl, "Backstage (Next)", backstageItem);
-    renderRequirementsCard(reqOnDeckEl, "On Deck", deckItem);
+    // Stage Requirements (safe even if panel missing)
+    if (reqNowTitleEl) reqNowTitleEl.textContent = currentItem?.title || "—";
+    if (reqNowMicsEl) reqNowMicsEl.textContent = getRequirement(currentItem, "mics");
+    if (reqNowChairsEl) reqNowChairsEl.textContent = getRequirement(currentItem, "chairs");
+    if (reqNowInstrumentsEl) reqNowInstrumentsEl.textContent = getRequirement(currentItem, "instruments");
+    if (reqNowOtherEl) reqNowOtherEl.textContent = getRequirement(currentItem, "other");
+
+    if (reqBackTitleEl) reqBackTitleEl.textContent = backstageItem?.title || "—";
+    if (reqBackMicsEl) reqBackMicsEl.textContent = getRequirement(backstageItem, "mics");
+    if (reqBackChairsEl) reqBackChairsEl.textContent = getRequirement(backstageItem, "chairs");
+    if (reqBackInstrumentsEl) reqBackInstrumentsEl.textContent = getRequirement(backstageItem, "instruments");
+    if (reqBackOtherEl) reqBackOtherEl.textContent = getRequirement(backstageItem, "other");
+
+    if (reqDeckTitleEl) reqDeckTitleEl.textContent = deckItem?.title || "—";
+    if (reqDeckMicsEl) reqDeckMicsEl.textContent = getRequirement(deckItem, "mics");
+    if (reqDeckChairsEl) reqDeckChairsEl.textContent = getRequirement(deckItem, "chairs");
+    if (reqDeckInstrumentsEl) reqDeckInstrumentsEl.textContent = getRequirement(deckItem, "instruments");
+    if (reqDeckOtherEl) reqDeckOtherEl.textContent = getRequirement(deckItem, "other");
   }
 
   function updateClock() {
@@ -756,8 +859,10 @@ function initOperatorView() {
       const diff = elapsed - planned;
       const sign = diff > 0 ? "+" : diff < 0 ? "-" : "";
       currentOverUnderEl.textContent = `${sign}${formatDuration(Math.abs(diff))}`;
+      applyOverUnderSignal(currentOverUnderEl, diff);
     } else {
       currentOverUnderEl.textContent = "—";
+      applySignal(currentOverUnderEl, "muted");
     }
   }
 

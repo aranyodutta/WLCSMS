@@ -276,21 +276,27 @@ button:disabled {
 .signal-muted   { color: var(--muted) !important; }
 
 /* Status chip tones (JS adds chip-* classes) */
+/* Default (OPEN VIEW / dark) */
 .status-chip.chip-running {
   background: rgba(53, 215, 138, 0.16) !important;
   border: 1px solid rgba(53, 215, 138, 0.32) !important;
-  color: #167a52 !important;
+  color: #9af0c6 !important;
 }
 .status-chip.chip-hold {
   background: rgba(255, 177, 76, 0.16) !important;
   border: 1px solid rgba(255, 177, 76, 0.32) !important;
-  color: #9a5b00 !important;
+  color: #ffe0b8 !important;
 }
 .status-chip.chip-stopped {
   background: rgba(170, 182, 204, 0.14) !important;
   border: 1px solid rgba(170, 182, 204, 0.22) !important;
-  color: #475569 !important;
+  color: #cad3e3 !important;
 }
+
+/* Operator overrides (light) */
+.operator .status-chip.chip-running { color: #167a52 !important; }
+.operator .status-chip.chip-hold { color: #9a5b00 !important; }
+.operator .status-chip.chip-stopped { color: #475569 !important; }
 
 /* ==============================
    OPERATOR: Side Controls (no scrolling for buttons)
@@ -445,10 +451,93 @@ button:disabled {
   color: var(--muted);
 }
 
+/* ==============================
+   OPEN VIEW: Large cards + timers + banner + list polish
+============================== */
+
+#upcomingList {
+  max-height: 560px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+#upcomingList .list-item {
+  padding: 14px 14px;
+}
+
+#upcomingList .list-item > div > div:first-child {
+  font-weight: 950;
+}
+
+.card-large {
+  background: linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.03));
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.07);
+  box-shadow: var(--shadow-soft);
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.card-large::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 4px;
+  border-radius: 999px;
+  background: rgba(76, 194, 255, 0.75);
+}
+
+.card-large h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.card-large .title {
+  font-size: 26px;
+  font-weight: 950;
+  letter-spacing: 0.2px;
+  margin-bottom: 6px;
+}
+
+.card-large .performers {
+  font-size: 13px;
+  font-weight: 850;
+  color: var(--muted);
+}
+
+.card-large .timer {
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 950;
+  letter-spacing: 0.4px;
+  color: var(--accent);
+}
+
+.banner {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.04);
+  color: var(--muted);
+  font-weight: 950;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  text-align: center;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .operator .op-grid { grid-template-columns: 1fr; }
   .operator .op-side { position: static; }
   .stage-req .req-grid { grid-template-columns: 1fr; }
   .grid-two { grid-template-columns: 1fr; }
+  #upcomingList { max-height: none; }
 }

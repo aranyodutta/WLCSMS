@@ -1397,33 +1397,92 @@ function initOpenView() {
     return s.length ? s : "—";
   }
 
-  function getLiveItem() {
-    return items.find((it) => it.status === "live") || items.find((it) => it.id === showData?.currentItemId) || null;
+  function typeUpper(item) {
+    return String(item?.type || "").trim().toUpperCase();
   }
 
-  function getBackstageItem() {
-    return items.find((it) => it.status === "backstage") || null;
+  function isAct(item) {
+    return typeUpper(item) === "ACT";
   }
 
-  function getBlueItem() {
-    return items.find((it) => it.status === "blue") || null;
+  function sortedByOrder(list) {
+    return [...list].sort((a, b) => (a.order || 0) - (b.order || 0));
   }
 
-  function secondsUntilBackstageOnStage() {
-    const liveItem = items.find((it) => it.status === "live");
-    if (!liveItem) return null;
-    const elapsed = getElapsedSeconds(liveItem.actualStartAt);
+  function getLiveRuntimeItem() {
+    // This is the item that is ACTUALLY running (has actualStartAt)
+    return items.find((it) => it.status === "live") || null;
+  }
+
+  function getOnStageItem() {
+    // On-stage display can be ANY type (narration/video/act/etc)
+    return getLiveRuntimeItem() || items.find((it) => it.id === showData?.currentItemId) || null;
+  }
+
+  function computeActPipeline() {
+    const sorted = sortedByOrder(items);
+    const anchor = getOnStageItem();
+
+    const anchorIdx = anchor ? sorted.findIndex((it) => it.id === anchor.id) : -1;
+    const startIdx = anchorIdx >= 0 ? anchorIdx : 0;
+
+    // Consider only not-done items from the anchor forward
+    const upcoming = sorted.slice(startIdx).filter((it) => it.status !== "done");
+
+    // Next ACTs after the anchor (skip narration/video/etc)
+    const actsAfter = upcoming.filter((it) => isAct(it) && it.id !== anchor?.id);
+
+    const backstageAct = actsAfter[0] || null;
+    const deckAct = actsAfter[1] || null;
+
+    return { sorted, anchor, anchorIdx, startIdx, backstageAct, deckAct };
+  }
+
+  function remainingSecondsForLiveItem(liveItem) {
+    const elapsed = getElapsedSeconds(liveItem?.actualStartAt);
     if (elapsed == null) return null;
-    const planned = liveItem.plannedSeconds || 0;
+    const planned = liveItem?.plannedSeconds || 0;
     return Math.max(0, planned - elapsed);
   }
 
-  function secondsUntilBlueMovesUp() {
-    const tLive = secondsUntilBackstageOnStage();
-    if (tLive == null) return null;
-    const backstageItem = getBackstageItem();
-    const backPlanned = backstageItem?.plannedSeconds || 0;
-    return Math.max(0, tLive + backPlanned);
+  // Time until a target item STARTS (sums remaining time in current live item + durations of items in between)
+  function secondsUntilItemStarts(targetItem) {
+    if (!targetItem) return null;
+
+    const showStatus = String(showData?.status || "").toLowerCase();
+    const frozen = showStatus === "hold" || showStatus === "stopped";
+    if (frozen) return null;
+
+    const { sorted } = computeActPipeline();
+    const liveItem = getLiveRuntimeItem();
+    const anchor = getOnStageItem();
+    const startItem = liveItem || anchor;
+
+    if (!startItem) return null;
+
+    // Must have a running clock to be meaningful
+    const baseRemaining = liveItem ? remainingSecondsForLiveItem(liveItem) : null;
+    if (baseRemaining == null) return null;
+
+    const startIdx = sorted.findIndex((it) => it.id === startItem.id);
+    if (startIdx < 0) return null;
+
+    let sum = baseRemaining;
+    let found = false;
+
+    for (let i = startIdx + 1; i < sorted.length; i++) {
+      const it = sorted[i];
+      if (it.status === "done") continue;
+
+      if (it.id === targetItem.id) {
+        found = true;
+        break; // do NOT include the target's own duration
+      }
+
+      sum += (it.plannedSeconds || 0);
+    }
+
+    return found ? sum : null;
   }
 
   function renderHeaderAndTopStats() {
@@ -1465,44 +1524,71 @@ function initOpenView() {
     if (!upcomingListEl) return;
     upcomingListEl.innerHTML = "";
 
-    const byOrder = [...items].sort((a, b) => (a.order || 0) - (b.order || 0));
+    const { sorted, anchorIdx, startIdx, backstageAct, deckAct } = computeActPipeline();
+    const liveRuntime = getLiveRuntimeItem();
 
-    byOrder.forEach((it) => {
-      const status = String(it.status || "queued").toLowerCase();
+    // Upcoming list: ONLY ACTS, and only from "now" forward, and not done
+    const acts = sorted
+      .slice(startIdx >= 0 ? startIdx : 0)
+      .filter((it) => it.status !== "done" && isAct(it));
+
+    acts.forEach((it) => {
+      let tagClass = "queued";
+
+      if (liveRuntime && it.id === liveRuntime.id) tagClass = "live";
+      else if (backstageAct && it.id === backstageAct.id) tagClass = "backstage";
+      else if (deckAct && it.id === deckAct.id) tagClass = "blue";
+
       const row = document.createElement("div");
       row.className = "list-item";
       row.innerHTML = `
         <div>
           <div>${it.title || "—"}</div>
-          <div class="meta">${it.type || "—"}</div>
+          <div class="meta">${formatPerformers(it.performers)}</div>
         </div>
-        <span class="tag ${status}">${displayStatus(status)}</span>
+        <span class="tag ${tagClass}">${displayStatus(tagClass)}</span>
       `;
       upcomingListEl.appendChild(row);
     });
+
+    // If no acts found, show a gentle placeholder
+    if (acts.length === 0) {
+      const row = document.createElement("div");
+      row.className = "list-item";
+      row.innerHTML = `
+        <div>
+          <div>—</div>
+          <div class="meta">No upcoming performances.</div>
+        </div>
+        <span class="tag queued">—</span>
+      `;
+      upcomingListEl.appendChild(row);
+    }
   }
 
   function renderRightCards() {
-    const liveItem = getLiveItem();
-    const backstageItem = getBackstageItem();
-    const blueItem = getBlueItem();
+    const { anchor, backstageAct, deckAct } = computeActPipeline();
 
-    if (liveTitleEl) liveTitleEl.textContent = liveItem?.title || "—";
-    if (livePerformersEl) livePerformersEl.textContent = formatPerformers(liveItem?.performers);
+    // ON STAGE (NOW) — can be anything
+    if (liveTitleEl) liveTitleEl.textContent = anchor?.title || "—";
+    if (livePerformersEl) livePerformersEl.textContent = formatPerformers(anchor?.performers);
 
-    if (backstageTitleEl) backstageTitleEl.textContent = backstageItem?.title || "—";
-    if (backstagePerformersEl) backstagePerformersEl.textContent = formatPerformers(backstageItem?.performers);
+    // BACKSTAGE / ON DECK — ACTS ONLY
+    if (backstageTitleEl) backstageTitleEl.textContent = backstageAct?.title || "—";
+    if (backstagePerformersEl) backstagePerformersEl.textContent = formatPerformers(backstageAct?.performers);
 
-    if (blueTitleEl) blueTitleEl.textContent = blueItem?.title || "—";
-    if (bluePerformersEl) bluePerformersEl.textContent = formatPerformers(blueItem?.performers);
+    if (blueTitleEl) blueTitleEl.textContent = deckAct?.title || "—";
+    if (bluePerformersEl) bluePerformersEl.textContent = formatPerformers(deckAct?.performers);
   }
 
   function updateTimers() {
     const showStatus = String(showData?.status || "").toLowerCase();
     const frozen = showStatus === "hold" || showStatus === "stopped";
 
-    const tBack = frozen ? null : secondsUntilBackstageOnStage();
-    const tBlue = frozen ? null : secondsUntilBlueMovesUp();
+    const { backstageAct, deckAct } = computeActPipeline();
+
+    const tBack = frozen ? null : secondsUntilItemStarts(backstageAct);
+    const tBlue = frozen ? null : secondsUntilItemStarts(deckAct);
 
     if (backstageTimerEl) backstageTimerEl.textContent = `GO TO STAGE IN: ${tBack == null ? "—" : formatDuration(tBack)}`;
     if (blueTimerEl) blueTimerEl.textContent = `GET READY IN: ${tBlue == null ? "—" : formatDuration(tBlue)}`;

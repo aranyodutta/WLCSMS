@@ -1633,6 +1633,22 @@ function initOpenView() {
   let showData = null;
   let items = [];
 
+  // Only show AHEAD/BEHIND if >= 3 minutes
+  const OPEN_SCHEDULE_THRESHOLD_SECONDS = 180;
+
+  function getOpenScheduleLabel(offsetSeconds) {
+    if (offsetSeconds == null || Number.isNaN(offsetSeconds)) return "ON TIME";
+    if (Math.abs(offsetSeconds) < OPEN_SCHEDULE_THRESHOLD_SECONDS) return "ON TIME";
+    return offsetSeconds > 0 ? "BEHIND" : "AHEAD";
+  }
+
+  function applyOpenScheduleSignal(el, offsetSeconds) {
+    const label = getOpenScheduleLabel(offsetSeconds);
+    if (label === "AHEAD") return applySignal(el, "success");
+    if (label === "BEHIND") return applySignal(el, "danger");
+    return applySignal(el, "info");
+  }
+
   // Cached / derived state (rebuilt only when snapshots change)
   const cache = {
     sorted: [],
@@ -1753,13 +1769,13 @@ function initOpenView() {
     const endAt = normalizeTimestamp(showData?.projectedEndAt) || normalizeTimestamp(showData?.plannedEndBaselineAt);
     projectedEndEl.textContent = formatClock(endAt);
 
-    // Schedule status (AHEAD/BEHIND + offset)
+    // Schedule status (AHEAD/BEHIND only if >= 3:00)
     const off = showData?.offsetSeconds;
-    const label = getStatusLabel(off);
+    const label = getOpenScheduleLabel(off);
     if (label === "AHEAD") scheduleStatusEl.textContent = `AHEAD ${formatOffset(off)}`;
     else if (label === "BEHIND") scheduleStatusEl.textContent = `BEHIND ${formatOffset(off)}`;
     else scheduleStatusEl.textContent = "ON TIME";
-    applyScheduleSignal(scheduleStatusEl, off);
+    applyOpenScheduleSignal(scheduleStatusEl, off);
 
     // Status chip + hold bar
     const statusLower = String(showData?.status || "").toLowerCase();

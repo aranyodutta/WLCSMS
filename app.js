@@ -847,7 +847,165 @@ function initOperatorView() {
   updateClock();
 }
 
+// ==============================
+// Open View logic (read-only)
+// ==============================
+function initOpenView() {
+  // If we don't find the Open View elements, do nothing.
+  const currentTimeEl =
+    document.getElementById("currentTime") ||
+    document.getElementById("openCurrentTime");
+
+  const projectedEndEl =
+    document.getElementById("projectedEnd") ||
+    document.getElementById("openProjectedEnd");
+
+  const scheduleStatusEl =
+    document.getElementById("scheduleStatus") ||
+    document.getElementById("openScheduleStatus");
+
+  const liveTitleEl = document.getElementById("liveTitle");
+  const livePerformersEl = document.getElementById("livePerformers");
+
+  const backstageTitleEl = document.getElementById("backstageTitle");
+  const backstagePerformersEl = document.getElementById("backstagePerformers");
+  const backstageTimerEl = document.getElementById("backstageTimer");
+
+  const blueTitleEl = document.getElementById("blueTitle");
+  const bluePerformersEl = document.getElementById("bluePerformers");
+  const blueTimerEl = document.getElementById("blueTimer");
+
+  const upcomingEl =
+    document.getElementById("upcoming") ||
+    document.getElementById("upcomingList") ||
+    document.getElementById("upcomingItems");
+
+  const openViewMarker = currentTimeEl || projectedEndEl || scheduleStatusEl || liveTitleEl || backstageTitleEl || blueTitleEl;
+  if (!openViewMarker) return;
+
+  let showData = null;
+  let items = [];
+
+  function formatPerformers(list) {
+    const arr = Array.isArray(list) ? list : [];
+    const s = arr.map((x) => String(x || "").trim()).filter(Boolean).join(", ");
+    return s.length ? s : "—";
+  }
+
+  function getLiveItem() {
+    return items.find((it) => it.status === "live") || items.find((it) => it.id === showData?.currentItemId) || null;
+  }
+
+  function getBackstageItem() {
+    return items.find((it) => it.status === "backstage") || null;
+  }
+
+  function getBlueItem() {
+    return items.find((it) => it.status === "blue") || null;
+  }
+
+  function secondsUntilBackstageOnStage() {
+    const liveItem = items.find((it) => it.status === "live");
+    if (!liveItem) return null;
+    const elapsed = getElapsedSeconds(liveItem.actualStartAt);
+    if (elapsed == null) return null;
+    const planned = liveItem.plannedSeconds || 0;
+    return Math.max(0, planned - elapsed);
+  }
+
+  function secondsUntilBlueMovesUp() {
+    const tLive = secondsUntilBackstageOnStage();
+    if (tLive == null) return null;
+    const backstageItem = getBackstageItem();
+    const backPlanned = backstageItem?.plannedSeconds || 0;
+    return Math.max(0, tLive + backPlanned);
+  }
+
+  function renderUpcoming() {
+    if (!upcomingEl) return;
+
+    const remaining = items
+      .filter((it) => it.status !== "done" && it.status !== "live" && it.status !== "backstage" && it.status !== "blue")
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .slice(0, 8);
+
+    if (remaining.length === 0) {
+      upcomingEl.innerHTML = `<div class="no-upcoming">—</div>`;
+      return;
+    }
+
+    const rows = remaining.map((it) => {
+      const performers = formatPerformers(it.performers);
+      const dur = it.plannedSeconds ? formatDuration(it.plannedSeconds) : "—";
+      return `
+        <div class="upcoming-row">
+          <div class="upcoming-left">
+            <div class="upcoming-title">${it.order}. ${it.title}</div>
+            <div class="upcoming-performers">${performers}</div>
+          </div>
+          <div class="upcoming-right">${dur}</div>
+        </div>
+      `;
+    });
+
+    upcomingEl.innerHTML = rows.join("");
+  }
+
+  function renderOpenView() {
+    // Top tiles
+    if (currentTimeEl) currentTimeEl.textContent = formatClock(new Date());
+
+    if (projectedEndEl) {
+      const endAt = normalizeTimestamp(showData?.projectedEndAt) || normalizeTimestamp(showData?.plannedEndBaselineAt);
+      projectedEndEl.textContent = formatClock(endAt);
+    }
+
+    if (scheduleStatusEl) {
+      const label = getStatusLabel(showData?.offsetSeconds);
+      scheduleStatusEl.textContent = label;
+      applyScheduleSignal(scheduleStatusEl, showData?.offsetSeconds);
+    }
+
+    // Now / Next / On Deck blocks
+    const liveItem = getLiveItem();
+    const backstageItem = getBackstageItem();
+    const blueItem = getBlueItem();
+
+    if (liveTitleEl) liveTitleEl.textContent = liveItem?.title || "—";
+    if (livePerformersEl) livePerformersEl.textContent = formatPerformers(liveItem?.performers);
+
+    if (backstageTitleEl) backstageTitleEl.textContent = backstageItem?.title || "—";
+    if (backstagePerformersEl) backstagePerformersEl.textContent = formatPerformers(backstageItem?.performers);
+
+    if (blueTitleEl) blueTitleEl.textContent = blueItem?.title || "—";
+    if (bluePerformersEl) bluePerformersEl.textContent = formatPerformers(blueItem?.performers);
+
+    renderUpcoming();
+  }
+
+  function updateTimers() {
+    if (currentTimeEl) currentTimeEl.textContent = formatClock(new Date());
+
+    const showStatus = String(showData?.status || "").toLowerCase();
+    const frozen = showStatus === "hold" || showStatus === "stopped";
+
+    const tBack = frozen ? null : secondsUntilBackstageOnStage();
+    const tBlue = frozen ? null : secondsUntilBlueMovesUp();
+
+    if (backstageTimerEl) backstageTimerEl.textContent = `GO TO STAGE IN: ${tBack == null ? "—" : formatDuration(tBack)}`;
+    if (blueTimerEl) blueTimerEl.textContent = `GET READY IN: ${tBlue == null ? "—" : formatDuration(tBlue)}`;
+  }
+
+  subscribeShow((data) => { showData = data; renderOpenView(); updateTimers(); });
+  subscribeItems((list) => { items = list; renderOpenView(); updateTimers(); });
+
+  setInterval(updateTimers, 1000);
+  updateTimers();
+}
+
 // Boot
 document.addEventListener("DOMContentLoaded", () => {
-  initOperatorView();
+  const isOperator = !!document.getElementById("operatorTime");
+  if (isOperator) initOperatorView();
+  else initOpenView();
 });

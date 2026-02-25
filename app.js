@@ -67,7 +67,12 @@ const seedItems = [
     type: "NARRATION",
     performers: ["Megha (Narrator)", "Tanisha", "Christian"],
     plannedSeconds: 75,
-    requirements: { mics: "3 handheld", chairs: "0", instruments: "None", other: "Teleporter PRAC idle → pulse; sets Travel Anchor #1" },
+    requirements: {
+      mics: "3 handheld",
+      chairs: "0",
+      instruments: "None",
+      other: "Teleporter PRAC idle → pulse; sets Travel Anchor #1",
+    },
     notes: "",
   },
   {
@@ -1171,6 +1176,33 @@ function initOperatorView() {
   let items = [];
   let lastSnapshot = null;
 
+  // ==============================
+  // FAST action lock (prevents double-click + feels instant)
+  // ==============================
+  let actionInFlight = false;
+
+  function setActionButtonsDisabled(disabled) {
+    if (startBtn) startBtn.disabled = disabled;
+    if (endBtn) endBtn.disabled = disabled;
+  }
+
+  async function withActionLock(fn) {
+    if (actionInFlight) return;
+    actionInFlight = true;
+    setActionButtonsDisabled(true);
+    try {
+      await fn();
+    } finally {
+      actionInFlight = false;
+      setActionButtonsDisabled(false);
+    }
+  }
+
+  function tsMs(v) {
+    const d = normalizeTimestamp(v);
+    return d ? d.getTime() : null;
+  }
+
   function snapshotState() {
     return {
       show: {
@@ -1325,11 +1357,221 @@ function initOperatorView() {
     });
   }
 
-  startBtn?.addEventListener("click", () => safeRun(async () => { lastSnapshot = snapshotState(); await startCurrentItem(); }));
-  endBtn?.addEventListener("click", () => safeRun(async () => { lastSnapshot = snapshotState(); await endCurrentItem(); }));
-  undoBtn?.addEventListener("click", () => safeRun(async () => { if (!lastSnapshot) return; await undoSnapshot(lastSnapshot); lastSnapshot = null; }));
-  holdBtn?.addEventListener("click", () => safeRun(async () => { const message = prompt("Hold message", showData?.holdMessage || "HOLD"); await toggleHold(showData?.status, message); }));
-  initBtn?.addEventListener("click", () => safeRun(async () => { if (!confirm("Reset the show? This will overwrite all data.")) return; await initShow(); }));
+  // ==============================
+  // FAST Start/End (batch write using already-loaded items)
+  // ==============================
+  async function startCurrentItemFast() {
+    if (!showData) throw new Error("Show not initialized. Click Init Show / Reset first.");
+    if (!Array.isArray(items) || items.length === 0) throw new Error("Items not loaded yet. Try again in a moment.");
+
+    const currentId = showData.currentItemId || "item-1";
+    const currentItem = items.find((it) => it.id === currentId);
+    if (!currentItem) throw new Error(`Current item not found: ${currentId}`);
+
+    const target = buildShiftMap(items, currentId);
+    if (!target) throw new Error("Could not build queue shift map.");
+
+    const now = new Date();
+
+    // Snapshot BEFORE changes (for minimal writes)
+    const before = items.map((it) => ({
+      id: it.id,
+      status: it.status,
+      actualStartAt: it.actualStartAt || null,
+      actualEndAt: it.actualEndAt || null,
+    }));
+    const beforeMap = new Map(before.map((x) => [x.id, x]));
+
+    // Build preview items
+    const previewItems = items.map((it) => {
+      const desired = target.get(it.id) || it.status;
+      const next = { ...it, status: desired };
+      if (it.id === currentId && !it.actualStartAt) next.actualStartAt = now;
+      return next;
+    });
+
+    const { projectedEndAt, offsetSeconds } = computeProjectedTiming(showData, previewItems);
+
+    // Optimistic UI update (instant)
+    items = previewItems;
+    showData = {
+      ...showData,
+      status: showData.status === "hold" ? "hold" : "running",
+      projectedEndAt,
+      offsetSeconds,
+    };
+    renderShow();
+    renderRunTable();
+
+    // Batch commit (minimal patches)
+    const batch = writeBatch(db);
+
+    previewItems.forEach((it) => {
+      const prev = beforeMap.get(it.id);
+      if (!prev) return;
+
+      const patch = {};
+      let changed = false;
+
+      if (prev.status !== it.status) {
+        patch.status = it.status;
+        changed = true;
+      }
+
+      const prevStart = tsMs(prev.actualStartAt);
+      const nextStart = tsMs(it.actualStartAt);
+      if (prevStart !== nextStart) {
+        patch.actualStartAt = it.actualStartAt || null;
+        changed = true;
+      }
+
+      if (changed) batch.update(doc(itemsRef, it.id), patch);
+    });
+
+    batch.update(showRef, {
+      status: showData.status,
+      projectedEndAt,
+      offsetSeconds,
+      updatedAt: serverTimestamp(),
+    });
+
+    await batch.commit();
+  }
+
+  async function endCurrentItemFast() {
+    if (!showData) throw new Error("Show not initialized. Click Init Show / Reset first.");
+    if (!Array.isArray(items) || items.length === 0) throw new Error("Items not loaded yet. Try again in a moment.");
+
+    const liveItem =
+      items.find((it) => it.status === "live") ||
+      items.find((it) => it.id === showData.currentItemId);
+
+    if (!liveItem) throw new Error("No LIVE/current item found to end.");
+
+    const now = new Date();
+
+    // Snapshot BEFORE changes (for minimal writes)
+    const before = items.map((it) => ({
+      id: it.id,
+      status: it.status,
+      actualEndAt: it.actualEndAt || null,
+    }));
+    const beforeMap = new Map(before.map((x) => [x.id, x]));
+
+    const byOrder = [...items].sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    // Mark ended item done + reset other not-done items to queued
+    const base = byOrder.map((it) => {
+      if (it.id === liveItem.id) return { ...it, status: "done", actualEndAt: now };
+      if (it.status === "done") return it;
+      return { ...it, status: "queued" };
+    });
+
+    const notDone = base.filter((it) => it.status !== "done");
+    const nextBackstage = notDone[0] || null;
+    const nextDeck = notDone[1] || null;
+
+    const finalItems = base.map((it) => {
+      if (it.status === "done") return it;
+      if (nextBackstage && it.id === nextBackstage.id) return { ...it, status: "backstage" };
+      if (nextDeck && it.id === nextDeck.id) return { ...it, status: "blue" };
+      return it; // already queued
+    });
+
+    const nextCurrentId = nextBackstage ? nextBackstage.id : "item-1";
+    const nextShowStatus = nextBackstage ? (showData.status === "hold" ? "hold" : "running") : "stopped";
+
+    const { projectedEndAt, offsetSeconds } = computeProjectedTiming(showData, finalItems);
+
+    // Optimistic UI update (instant)
+    items = finalItems;
+    showData = {
+      ...showData,
+      status: nextShowStatus,
+      currentItemId: nextCurrentId,
+      projectedEndAt,
+      offsetSeconds,
+    };
+    renderShow();
+    renderRunTable();
+
+    // Batch commit (minimal patches)
+    const batch = writeBatch(db);
+
+    finalItems.forEach((it) => {
+      const prev = beforeMap.get(it.id);
+      if (!prev) return;
+
+      const patch = {};
+      let changed = false;
+
+      if (prev.status !== it.status) {
+        patch.status = it.status;
+        changed = true;
+      }
+
+      if (it.id === liveItem.id) {
+        // always set actualEndAt for ended item
+        patch.actualEndAt = now;
+        changed = true;
+      }
+
+      if (changed) batch.update(doc(itemsRef, it.id), patch);
+    });
+
+    batch.update(showRef, {
+      status: nextShowStatus,
+      currentItemId: nextCurrentId,
+      projectedEndAt,
+      offsetSeconds,
+      updatedAt: serverTimestamp(),
+    });
+
+    await batch.commit();
+  }
+
+  // ==============================
+  // Controls (FAST wired)
+  // ==============================
+  startBtn?.addEventListener("click", () =>
+    safeRun(() =>
+      withActionLock(async () => {
+        lastSnapshot = snapshotState();
+        await startCurrentItemFast();
+      })
+    )
+  );
+
+  endBtn?.addEventListener("click", () =>
+    safeRun(() =>
+      withActionLock(async () => {
+        lastSnapshot = snapshotState();
+        await endCurrentItemFast();
+      })
+    )
+  );
+
+  undoBtn?.addEventListener("click", () =>
+    safeRun(async () => {
+      if (!lastSnapshot) return;
+      await undoSnapshot(lastSnapshot);
+      lastSnapshot = null;
+    })
+  );
+
+  holdBtn?.addEventListener("click", () =>
+    safeRun(async () => {
+      const message = prompt("Hold message", showData?.holdMessage || "HOLD");
+      await toggleHold(showData?.status, message);
+    })
+  );
+
+  initBtn?.addEventListener("click", () =>
+    safeRun(async () => {
+      if (!confirm("Reset the show? This will overwrite all data.")) return;
+      await initShow();
+    })
+  );
 
   advancedToggle?.addEventListener("change", () => {
     const isEnabled = advancedToggle.checked;

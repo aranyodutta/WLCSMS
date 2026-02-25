@@ -821,6 +821,7 @@ function initOperatorView() {
   advancedToggle?.addEventListener("change", () => {
     const isEnabled = advancedToggle.checked;
     document.querySelectorAll(".advanced").forEach((cell) => (cell.style.display = isEnabled ? "table-cell" : "none"));
+    const advancedHeader = document.getElementById("advancedHeader");
     if (advancedHeader) advancedHeader.style.display = isEnabled ? "table-cell" : "none";
   });
 
@@ -851,18 +852,14 @@ function initOperatorView() {
 // Open View logic (read-only)
 // ==============================
 function initOpenView() {
-  // If we don't find the Open View elements, do nothing.
-  const currentTimeEl =
-    document.getElementById("currentTime") ||
-    document.getElementById("openCurrentTime");
+  const showStatusEl = document.getElementById("showStatus");
+  const holdBarEl = document.getElementById("holdBar");
 
-  const projectedEndEl =
-    document.getElementById("projectedEnd") ||
-    document.getElementById("openProjectedEnd");
+  const scheduleStatusEl = document.getElementById("scheduleStatus");
+  const projectedEndEl = document.getElementById("projectedEnd");
+  const currentTimeEl = document.getElementById("currentTime");
 
-  const scheduleStatusEl =
-    document.getElementById("scheduleStatus") ||
-    document.getElementById("openScheduleStatus");
+  const upcomingListEl = document.getElementById("upcomingList");
 
   const liveTitleEl = document.getElementById("liveTitle");
   const livePerformersEl = document.getElementById("livePerformers");
@@ -875,13 +872,8 @@ function initOpenView() {
   const bluePerformersEl = document.getElementById("bluePerformers");
   const blueTimerEl = document.getElementById("blueTimer");
 
-  const upcomingEl =
-    document.getElementById("upcoming") ||
-    document.getElementById("upcomingList") ||
-    document.getElementById("upcomingItems");
-
-  const openViewMarker = currentTimeEl || projectedEndEl || scheduleStatusEl || liveTitleEl || backstageTitleEl || blueTitleEl;
-  if (!openViewMarker) return;
+  // If these don't exist, we're not on open.html
+  if (!scheduleStatusEl || !projectedEndEl || !currentTimeEl) return;
 
   let showData = null;
   let items = [];
@@ -921,52 +913,63 @@ function initOpenView() {
     return Math.max(0, tLive + backPlanned);
   }
 
-  function renderUpcoming() {
-    if (!upcomingEl) return;
+  function renderHeaderAndTopStats() {
+    // Current time
+    currentTimeEl.textContent = formatClock(new Date());
 
-    const remaining = items
-      .filter((it) => it.status !== "done" && it.status !== "live" && it.status !== "backstage" && it.status !== "blue")
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
-      .slice(0, 8);
+    // Projected end
+    const endAt = normalizeTimestamp(showData?.projectedEndAt) || normalizeTimestamp(showData?.plannedEndBaselineAt);
+    projectedEndEl.textContent = formatClock(endAt);
 
-    if (remaining.length === 0) {
-      upcomingEl.innerHTML = `<div class="no-upcoming">—</div>`;
-      return;
+    // Schedule status (AHEAD/BEHIND + offset)
+    const off = showData?.offsetSeconds;
+    const label = getStatusLabel(off);
+    if (label === "AHEAD") scheduleStatusEl.textContent = `AHEAD ${formatOffset(off)}`;
+    else if (label === "BEHIND") scheduleStatusEl.textContent = `BEHIND ${formatOffset(off)}`;
+    else scheduleStatusEl.textContent = "ON TIME";
+    applyScheduleSignal(scheduleStatusEl, off);
+
+    // Status chip + hold bar
+    const statusLower = String(showData?.status || "").toLowerCase();
+    const statusText = showData?.status ? String(showData.status).toUpperCase() : "LOADING…";
+    if (showStatusEl) {
+      showStatusEl.textContent = statusText;
+      applyShowStatusChip(showStatusEl, statusLower);
     }
 
-    const rows = remaining.map((it) => {
-      const performers = formatPerformers(it.performers);
-      const dur = it.plannedSeconds ? formatDuration(it.plannedSeconds) : "—";
-      return `
-        <div class="upcoming-row">
-          <div class="upcoming-left">
-            <div class="upcoming-title">${it.order}. ${it.title}</div>
-            <div class="upcoming-performers">${performers}</div>
-          </div>
-          <div class="upcoming-right">${dur}</div>
-        </div>
-      `;
-    });
-
-    upcomingEl.innerHTML = rows.join("");
+    if (holdBarEl) {
+      if (statusLower === "hold") {
+        holdBarEl.style.display = "block";
+        holdBarEl.textContent = showData?.holdMessage || "HOLD";
+      } else {
+        holdBarEl.style.display = "none";
+        holdBarEl.textContent = "";
+      }
+    }
   }
 
-  function renderOpenView() {
-    // Top tiles
-    if (currentTimeEl) currentTimeEl.textContent = formatClock(new Date());
+  function renderUpcomingList() {
+    if (!upcomingListEl) return;
+    upcomingListEl.innerHTML = "";
 
-    if (projectedEndEl) {
-      const endAt = normalizeTimestamp(showData?.projectedEndAt) || normalizeTimestamp(showData?.plannedEndBaselineAt);
-      projectedEndEl.textContent = formatClock(endAt);
-    }
+    const byOrder = [...items].sort((a, b) => (a.order || 0) - (b.order || 0));
 
-    if (scheduleStatusEl) {
-      const label = getStatusLabel(showData?.offsetSeconds);
-      scheduleStatusEl.textContent = label;
-      applyScheduleSignal(scheduleStatusEl, showData?.offsetSeconds);
-    }
+    byOrder.forEach((it) => {
+      const status = String(it.status || "queued").toLowerCase();
+      const row = document.createElement("div");
+      row.className = "list-item";
+      row.innerHTML = `
+        <div>
+          <div>${it.title || "—"}</div>
+          <div class="meta">${it.type || "—"}</div>
+        </div>
+        <span class="tag ${status}">${displayStatus(status)}</span>
+      `;
+      upcomingListEl.appendChild(row);
+    });
+  }
 
-    // Now / Next / On Deck blocks
+  function renderRightCards() {
     const liveItem = getLiveItem();
     const backstageItem = getBackstageItem();
     const blueItem = getBlueItem();
@@ -979,13 +982,9 @@ function initOpenView() {
 
     if (blueTitleEl) blueTitleEl.textContent = blueItem?.title || "—";
     if (bluePerformersEl) bluePerformersEl.textContent = formatPerformers(blueItem?.performers);
-
-    renderUpcoming();
   }
 
   function updateTimers() {
-    if (currentTimeEl) currentTimeEl.textContent = formatClock(new Date());
-
     const showStatus = String(showData?.status || "").toLowerCase();
     const frozen = showStatus === "hold" || showStatus === "stopped";
 
@@ -994,10 +993,20 @@ function initOpenView() {
 
     if (backstageTimerEl) backstageTimerEl.textContent = `GO TO STAGE IN: ${tBack == null ? "—" : formatDuration(tBack)}`;
     if (blueTimerEl) blueTimerEl.textContent = `GET READY IN: ${tBlue == null ? "—" : formatDuration(tBlue)}`;
+
+    // keep clock updating too
+    currentTimeEl.textContent = formatClock(new Date());
   }
 
-  subscribeShow((data) => { showData = data; renderOpenView(); updateTimers(); });
-  subscribeItems((list) => { items = list; renderOpenView(); updateTimers(); });
+  function renderAll() {
+    renderHeaderAndTopStats();
+    renderUpcomingList();
+    renderRightCards();
+    updateTimers();
+  }
+
+  subscribeShow((data) => { showData = data; renderAll(); });
+  subscribeItems((list) => { items = list; renderAll(); });
 
   setInterval(updateTimers, 1000);
   updateTimers();

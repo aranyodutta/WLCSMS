@@ -211,14 +211,40 @@ button:disabled {
   text-transform: uppercase;
   letter-spacing: 0.6px;
   border: 1px solid rgba(255,255,255,0.08);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* tag colors */
-.tag.live { background: rgba(53,215,138,0.16); color: #9af0c6; border-color: rgba(53,215,138,0.28); }
 .tag.backstage { background: rgba(76,194,255,0.16); color: #bfeaff; border-color: rgba(76,194,255,0.28); }
 .tag.blue { background: rgba(255,177,76,0.16); color: #ffe0b8; border-color: rgba(255,177,76,0.28); }
 .tag.done { background: rgba(99,102,241,0.14); color: #d6d8ff; border-color: rgba(99,102,241,0.22); }
 .tag.queued { background: rgba(170,182,204,0.14); color: #cad3e3; border-color: rgba(170,182,204,0.22); }
+
+/* CHANGED: LIVE is RED (instead of green) */
+.tag.live {
+  background: rgba(239,68,68,0.16);
+  color: #ffb4b4;
+  border-color: rgba(239,68,68,0.28);
+}
+.tag.live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0 0 rgba(239,68,68,0.45);
+  animation: livePulseSmall 1s infinite;
+}
+@keyframes livePulseSmall {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(239,68,68,0.45); opacity: 1; }
+  70%  { transform: scale(1.35); box-shadow: 0 0 0 10px rgba(239,68,68,0.0); opacity: 1; }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239,68,68,0.0); opacity: 0.85; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tag.live::before { animation: none; }
+}
 
 .small { font-size: 12px; color: var(--muted); font-weight: 800; }
 
@@ -321,6 +347,56 @@ button:disabled {
   font-size: 12px;
   color: var(--muted);
   font-weight: 900;
+}
+
+/* ==============================
+   OPERATOR: Now Running numbers BIG (Planned / Elapsed / Over/Under)
+   (Same size as Current Time numbers)
+============================== */
+.operator #currentPlanned,
+.operator #currentElapsed,
+.operator #currentOverUnder {
+  font-size: 28px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.3px;
+  /* do NOT use !important on color; signal classes need to override */
+  color: #0f172a;
+}
+
+/* Status cell on the right */
+.operator .status-indicator {
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #334155;
+}
+
+/* LIVE badge in Now Running header row */
+.operator .live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #dc2626;
+  font-weight: 950;
+  letter-spacing: 0.9px;
+}
+
+.operator .live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #dc2626;
+  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45);
+  animation: livePulseBig 1s infinite;
+}
+@keyframes livePulseBig {
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); opacity: 1; }
+  70%  { transform: scale(1.25); box-shadow: 0 0 0 12px rgba(220, 38, 38, 0.0); opacity: 1; }
+  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.0); opacity: 0.85; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .operator .live-dot { animation: none; }
 }
 
 /* ==============================

@@ -1135,7 +1135,7 @@ function initOperatorView() {
   const currentPlannedEl = document.getElementById("currentPlanned");
   const currentElapsedEl = document.getElementById("currentElapsed");
   const currentOverUnderEl = document.getElementById("currentOverUnder");
-  const currentStartTimeEl = document.getElementById("currentStartTime");
+  const currentStartTimeEl = document.getElementById("currentStartTime"); // may not exist now (we removed Start Time row)
 
   const backstageTitleEl = document.getElementById("backstageTitle");
   const backstagePlannedEl = document.getElementById("backstagePlanned");
@@ -1268,6 +1268,18 @@ function initOperatorView() {
     });
   }
 
+  // NEW: Live indicator (red + blinking dot) in the Now Running header row
+  function renderNowRunningStatus(statusRaw) {
+    if (!currentStatusEl) return;
+    const s = String(statusRaw || "").toLowerCase();
+    if (s === "live") {
+      currentStatusEl.innerHTML = `<span class="live-badge"><span class="live-dot"></span>LIVE</span>`;
+    } else {
+      // plain text for other statuses
+      currentStatusEl.textContent = displayStatus(s);
+    }
+  }
+
   function renderShow() {
     if (!showData) return;
 
@@ -1294,9 +1306,16 @@ function initOperatorView() {
 
     currentTitleEl.textContent = currentItem?.title || "—";
     currentTypeEl.textContent = currentItem?.type || "—";
-    currentStatusEl.textContent = displayStatus(currentItem?.status);
+
+    // CHANGED: status uses LIVE badge when live
+    renderNowRunningStatus(currentItem?.status);
+
     currentPlannedEl.textContent = currentItem?.plannedSeconds ? formatDuration(currentItem.plannedSeconds) : "—";
-    currentStartTimeEl.textContent = formatClock(currentItem?.actualStartAt?.toDate?.() || currentItem?.actualStartAt);
+
+    // Start Time row removed, but if element exists, keep it populated (safe)
+    if (currentStartTimeEl) {
+      currentStartTimeEl.textContent = formatClock(currentItem?.actualStartAt?.toDate?.() || currentItem?.actualStartAt);
+    }
 
     backstageTitleEl.textContent = backstageItem?.title || "—";
     backstagePlannedEl.textContent = backstageItem?.plannedSeconds ? formatDuration(backstageItem.plannedSeconds) : "—";
